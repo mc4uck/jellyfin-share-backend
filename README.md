@@ -39,8 +39,8 @@ A secure, self-hosted solution for creating temporary, shareable links to your J
 ### 1. Clone and Configure
 
 ```bash
-git clone https://github.com/yourusername/jellyfin-share.git
-cd jellyfin-share
+git clone https://github.com/monxas/jellyfin-share-backend.git
+cd jellyfin-share-backend
 
 # Copy example environment file
 cp .env.example .env
@@ -234,7 +234,7 @@ cd web && npm run build
 
 ## Companion Plugin
 
-For seamless integration, install the [Jellyfin Share Plugin](https://github.com/yourusername/jellyfin-share-plugin) to create share links directly from the Jellyfin UI.
+For seamless integration, install the [Jellyfin Share Plugin](https://github.com/monxas/jellyfin-share-plugin) to create share links directly from the Jellyfin UI.
 
 ## License
 
