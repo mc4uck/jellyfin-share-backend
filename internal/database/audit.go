@@ -71,3 +71,85 @@ func (db *DB) GetAuditLogs(ctx context.Context, shareID *uuid.UUID, limit, offse
 	}
 	return logs, nil
 }
+
+// ShareAnalytics holds analytics data for a share
+type ShareAnalytics struct {
+	TotalViews          int          `json:"totalViews"`
+	UniqueViewers       int          `json:"uniqueViewers"`
+	AvgWatchTimeSeconds int          `json:"avgWatchTimeSeconds"`
+	ViewsByDay          []DailyViews `json:"viewsByDay"`
+}
+
+// DailyViews holds views per day
+type DailyViews struct {
+	Date  string `json:"date"`
+	Views int    `json:"views"`
+}
+
+// GetShareAnalytics retrieves analytics for a specific share
+func (db *DB) GetShareAnalytics(ctx context.Context, shareID uuid.UUID) (*ShareAnalytics, error) {
+	analytics := &ShareAnalytics{
+		ViewsByDay: []DailyViews{},
+	}
+
+	// Get total views (playback_started events)
+	var totalViews int
+	err := db.GetContext(ctx, &totalViews, `
+		SELECT COUNT(*) FROM audit_logs
+		WHERE share_id = $1 AND event_type = 'playback_started'
+	`, shareID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total views: %w", err)
+	}
+	analytics.TotalViews = totalViews
+
+	// Get unique viewers (distinct IP hashes)
+	var uniqueViewers int
+	err = db.GetContext(ctx, &uniqueViewers, `
+		SELECT COUNT(DISTINCT client_ip_hash) FROM audit_logs
+		WHERE share_id = $1 AND event_type = 'playback_started' AND client_ip_hash IS NOT NULL
+	`, shareID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unique viewers: %w", err)
+	}
+	analytics.UniqueViewers = uniqueViewers
+
+	// Get average watch time from sessions
+	var avgWatchTime float64
+	err = db.GetContext(ctx, &avgWatchTime, `
+		SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))), 0)
+		FROM sessions WHERE share_id = $1
+	`, shareID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get avg watch time: %w", err)
+	}
+	analytics.AvgWatchTimeSeconds = int(avgWatchTime)
+
+	// Get views by day (last 30 days)
+	type dailyRow struct {
+		Date  string `db:"date"`
+		Views int    `db:"views"`
+	}
+	var dailyRows []dailyRow
+	err = db.SelectContext(ctx, &dailyRows, `
+		SELECT DATE(created_at) as date, COUNT(*) as views
+		FROM audit_logs
+		WHERE share_id = $1
+			AND event_type = 'playback_started'
+			AND created_at >= NOW() - INTERVAL '30 days'
+		GROUP BY DATE(created_at)
+		ORDER BY date DESC
+	`, shareID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get daily views: %w", err)
+	}
+
+	for _, row := range dailyRows {
+		analytics.ViewsByDay = append(analytics.ViewsByDay, DailyViews{
+			Date:  row.Date,
+			Views: row.Views,
+		})
+	}
+
+	return analytics, nil
+}

@@ -283,3 +283,21 @@ func (h *AdminHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		"activeShares": activeShares,
 	})
 }
+
+func (h *AdminHandler) GetShareAnalytics(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid share ID")
+		return
+	}
+
+	analytics, err := h.db.GetShareAnalytics(r.Context(), id)
+	if err != nil {
+		log.Printf("Failed to get analytics: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to get analytics")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, analytics)
+}

@@ -97,6 +97,7 @@ func main() {
 		r.Get("/shares/{id}", adminHandler.GetShare)
 		r.Post("/shares/{id}/revoke", adminHandler.RevokeShare)
 		r.Patch("/shares/{id}", adminHandler.UpdateShare)
+		r.Get("/shares/{id}/analytics", adminHandler.GetShareAnalytics)
 		r.Get("/stats", adminHandler.GetStats)
 	})
 
