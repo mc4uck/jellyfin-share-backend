@@ -7,10 +7,7 @@ version: '3.8'
 
 services:
   jfshare:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: jfshare:latest
+    image: ghcr.io/monxas/jellyfin-share-backend:latest
     container_name: jfshare
     restart: unless-stopped
     ports:
