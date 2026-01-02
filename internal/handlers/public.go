@@ -406,3 +406,186 @@ func (h *PublicHandler) FinishPlayback(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "finished"})
 }
+
+// GetShareEpisodes returns episodes for a Season share
+func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+
+	share, err := h.db.GetShareByToken(r.Context(), token)
+	if err != nil || share == nil {
+		writeError(w, http.StatusNotFound, "share not found")
+		return
+	}
+
+	if !share.IsValid() {
+		writeError(w, http.StatusGone, "share is no longer available")
+		return
+	}
+
+	// Check password if required
+	if share.RequiresPassword() && !h.sessions.GetSessionFromCookie(r, token) {
+		writeError(w, http.StatusUnauthorized, "password required")
+		return
+	}
+
+	// Only Season and Series types have episodes/children
+	if share.ItemType != "Season" && share.ItemType != "Series" {
+		writeError(w, http.StatusBadRequest, "this share does not contain episodes")
+		return
+	}
+
+	var episodes []jellyfin.EpisodeInfo
+
+	if share.ItemType == "Season" {
+		episodes, err = h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+	} else {
+		episodes, err = h.jf.GetSeriesSeasons(r.Context(), share.JellyfinItemID)
+	}
+
+	if err != nil {
+		log.Printf("Failed to get episodes: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to get episodes")
+		return
+	}
+
+	// Add poster URLs
+	type EpisodeWithPoster struct {
+		jellyfin.EpisodeInfo
+		PosterURL string `json:"posterUrl,omitempty"`
+	}
+
+	result := make([]EpisodeWithPoster, 0, len(episodes))
+	for _, ep := range episodes {
+		ewp := EpisodeWithPoster{EpisodeInfo: ep}
+		if ep.HasPoster {
+			ewp.PosterURL = h.cfg.PublicBaseURL + "/api/public/images/" + token + "/episode/" + ep.ID
+		}
+		result = append(result, ewp)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"episodes": result,
+		"total":    len(result),
+	})
+}
+
+// StartEpisodePlayback starts playback for a specific episode within a season share
+func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	episodeID := chi.URLParam(r, "episodeId")
+
+	share, err := h.db.GetShareByToken(r.Context(), token)
+	if err != nil || share == nil {
+		writeError(w, http.StatusNotFound, "share not found")
+		return
+	}
+
+	// Validate share state
+	if !share.IsValid() {
+		writeError(w, http.StatusGone, "share is no longer available")
+		return
+	}
+
+	// Check password if required
+	if share.RequiresPassword() && !h.sessions.GetSessionFromCookie(r, token) {
+		writeError(w, http.StatusUnauthorized, "password required")
+		return
+	}
+
+	// Verify this is a Season share
+	if share.ItemType != "Season" {
+		writeError(w, http.StatusBadRequest, "episode playback only available for season shares")
+		return
+	}
+
+	// Verify the episode belongs to this season
+	episodes, err := h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+	if err != nil {
+		log.Printf("Failed to get episodes: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to verify episode")
+		return
+	}
+
+	episodeValid := false
+	for _, ep := range episodes {
+		if ep.ID == episodeID {
+			episodeValid = true
+			break
+		}
+	}
+
+	if !episodeValid {
+		writeError(w, http.StatusForbidden, "episode not part of this season")
+		return
+	}
+
+	// Clean up stale sessions first
+	staleCount, _ := h.db.TerminateStaleSessionsForShare(r.Context(), share.ID, h.cfg.SessionHeartbeatTimeout)
+	if staleCount > 0 {
+		h.db.ReconcileConcurrentViewers(r.Context(), share.ID, h.cfg.SessionHeartbeatTimeout)
+		share, _ = h.db.GetShareByToken(r.Context(), token)
+	}
+
+	// Check limits
+	if !share.CanStartNewPlay() {
+		ipHash := middleware.GetIPHash(r.Context())
+		h.db.LogAuditEvent(r.Context(), database.AuditEventPlaybackDenied, &share.ID, nil, nil, &ipHash, map[string]interface{}{
+			"reason":    "limit_reached",
+			"episodeId": episodeID,
+		})
+
+		if share.MaxTotalPlays.Valid && int64(share.TotalPlays) >= share.MaxTotalPlays.Int64 {
+			writeError(w, http.StatusForbidden, "maximum plays reached")
+		} else {
+			writeError(w, http.StatusForbidden, "maximum concurrent viewers reached")
+		}
+		return
+	}
+
+	// Create session for the episode
+	sessionToken := middleware.GenerateSecureToken(32)
+	session := &models.ShareSession{
+		ID:              uuid.New(),
+		ShareID:         share.ID,
+		SessionToken:    sessionToken,
+		StartedAt:       time.Now(),
+		LastHeartbeatAt: time.Now(),
+	}
+
+	// Store episode ID in session (we'll use client IP hash field for now, or add a note)
+	ipHash := middleware.GetIPHash(r.Context())
+	if ipHash != "" {
+		session.ClientIPHash = sql.NullString{String: ipHash, Valid: true}
+	}
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent != "" {
+		if len(userAgent) > 256 {
+			userAgent = userAgent[:256]
+		}
+		session.UserAgent = sql.NullString{String: userAgent, Valid: true}
+	}
+
+	if err := h.db.CreateSession(r.Context(), session); err != nil {
+		log.Printf("Failed to create session: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to start playback")
+		return
+	}
+
+	// Increment counters
+	if err := h.db.IncrementPlayCount(r.Context(), share.ID); err != nil {
+		log.Printf("Failed to increment play count: %v", err)
+	}
+
+	// Log audit event
+	h.db.LogAuditEvent(r.Context(), database.AuditEventPlaybackStarted, &share.ID, &session.ID, nil, &ipHash, map[string]interface{}{
+		"episodeId": episodeID,
+	})
+
+	// Generate playback URL for the specific episode
+	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + episodeID
+
+	writeJSON(w, http.StatusOK, models.PlayResponse{
+		SessionID:   session.ID,
+		PlaybackURL: playbackURL,
+	})
+}

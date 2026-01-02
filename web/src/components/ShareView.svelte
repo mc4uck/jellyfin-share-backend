@@ -13,19 +13,59 @@
   let passwordLoading = false;
 
   $: showPasswordForm = needsPassword;
+  $: isSeasonOrSeries = shareInfo.itemType === 'Season' || shareInfo.itemType === 'Series';
 
   let isPlaying = false;
   let playbackData = null;
   let playError = '';
   let imageLoaded = !shareInfo.posterUrl;
   let showFullCast = false;
+  let currentPlayingTitle = '';
 
-  onMount(() => {
+  // Episode list for Season/Series
+  let episodes = [];
+  let episodesLoading = false;
+  let episodesError = '';
+
+  onMount(async () => {
     const timeout = setTimeout(() => {
       imageLoaded = true;
     }, 500);
+
+    // Load episodes for Season/Series
+    if (isSeasonOrSeries && !needsPassword) {
+      await loadEpisodes();
+    }
+
     return () => clearTimeout(timeout);
   });
+
+  // Load episodes when password is validated
+  $: if (isSeasonOrSeries && !needsPassword && episodes.length === 0 && !episodesLoading) {
+    loadEpisodes();
+  }
+
+  async function loadEpisodes() {
+    if (!isSeasonOrSeries) return;
+    episodesLoading = true;
+    episodesError = '';
+    try {
+      const response = await fetch(`/api/public/shares/${token}/episodes`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        episodesError = data.error || 'Failed to load episodes';
+        return;
+      }
+      const data = await response.json();
+      episodes = data.episodes || [];
+    } catch (e) {
+      episodesError = 'Failed to load episodes';
+    } finally {
+      episodesLoading = false;
+    }
+  }
 
   function formatDuration(seconds) {
     if (!seconds) return '';
@@ -103,6 +143,28 @@
         return;
       }
       playbackData = await response.json();
+      currentPlayingTitle = shareInfo.title;
+      isPlaying = true;
+    } catch (e) {
+      playError = 'Failed to connect to server';
+    }
+  }
+
+  async function startEpisodePlayback(episode) {
+    playError = '';
+    try {
+      const response = await fetch(`/api/public/shares/${token}/episodes/${episode.id}/play`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        playError = data.error || 'Failed to start playback';
+        return;
+      }
+      playbackData = await response.json();
+      currentPlayingTitle = `E${episode.indexNumber}: ${episode.name}`;
       isPlaying = true;
     } catch (e) {
       playError = 'Failed to connect to server';
@@ -112,6 +174,7 @@
   function handlePlayerClose() {
     isPlaying = false;
     playbackData = null;
+    currentPlayingTitle = '';
   }
 
   function handleImageLoad() {
@@ -125,7 +188,7 @@
 
 <div class="share-container">
   {#if isPlaying && playbackData}
-    <Player {playbackData} title={shareInfo.title} on:close={handlePlayerClose} />
+    <Player {playbackData} title={currentPlayingTitle || shareInfo.title} on:close={handlePlayerClose} />
   {:else}
     <div class="backdrop-container">
       <div class="backdrop" style="background-image: url('{shareInfo.backdropUrl || shareInfo.posterUrl}')"></div>
@@ -337,16 +400,64 @@
               </form>
             </div>
           {:else}
-            <button class="play-button" on:click={startPlayback}>
-              <div class="play-icon">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
+            {#if isSeasonOrSeries}
+              <!-- Episode List for Season/Series -->
+              <div class="episodes-section">
+                <h3 class="episodes-header">
+                  {shareInfo.itemType === 'Season' ? 'Episodes' : 'Seasons'}
+                  {#if episodes.length > 0}
+                    <span class="episodes-count">({episodes.length})</span>
+                  {/if}
+                </h3>
+
+                {#if episodesLoading}
+                  <div class="episodes-loading">
+                    <div class="loading-spinner"></div>
+                    <span>Loading {shareInfo.itemType === 'Season' ? 'episodes' : 'seasons'}...</span>
+                  </div>
+                {:else if episodesError}
+                  <p class="error-msg">{episodesError}</p>
+                {:else if episodes.length === 0}
+                  <p class="episodes-empty">No {shareInfo.itemType === 'Season' ? 'episodes' : 'seasons'} found</p>
+                {:else}
+                  <div class="episodes-list">
+                    {#each episodes as episode}
+                      <button class="episode-card" on:click={() => startEpisodePlayback(episode)}>
+                        <div class="episode-number">
+                          {episode.indexNumber || '?'}
+                        </div>
+                        <div class="episode-info">
+                          <div class="episode-title">{episode.name}</div>
+                          {#if episode.runtimeSeconds}
+                            <div class="episode-meta">{formatDuration(episode.runtimeSeconds)}</div>
+                          {/if}
+                        </div>
+                        <div class="episode-play">
+                          <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                        </div>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+
+                {#if playError}
+                  <p class="error-msg">{playError}</p>
+                {/if}
               </div>
-              <span>Play Now</span>
-            </button>
-            {#if playError}
-              <p class="error-msg">{playError}</p>
+            {:else}
+              <button class="play-button" on:click={startPlayback}>
+                <div class="play-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                </div>
+                <span>Play Now</span>
+              </button>
+              {#if playError}
+                <p class="error-msg">{playError}</p>
+              {/if}
             {/if}
           {/if}
         </div>
@@ -874,6 +985,163 @@
     margin: 0.75rem 0 0 0;
   }
 
+  /* Episodes Section */
+  .episodes-section {
+    margin-top: 1rem;
+  }
+
+  .episodes-header {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0 0 1rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .episodes-count {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 400;
+  }
+
+  .episodes-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+    padding: 1rem;
+  }
+
+  .loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #00d4ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .episodes-empty {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9rem;
+    padding: 1rem;
+    margin: 0;
+  }
+
+  .episodes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+
+  .episodes-list::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .episodes-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+  }
+
+  .episodes-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
+  .episodes-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .episode-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    text-align: left;
+    color: inherit;
+  }
+
+  .episode-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(0, 212, 255, 0.3);
+    transform: translateX(4px);
+  }
+
+  .episode-card:active {
+    transform: translateX(2px);
+  }
+
+  .episode-number {
+    width: 36px;
+    height: 36px;
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #00d4ff;
+    flex-shrink: 0;
+  }
+
+  .episode-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .episode-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .episode-meta {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 0.15rem;
+  }
+
+  .episode-play {
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 212, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+
+  .episode-play svg {
+    width: 14px;
+    height: 14px;
+    color: #00d4ff;
+    margin-left: 2px;
+  }
+
+  .episode-card:hover .episode-play {
+    background: rgba(0, 212, 255, 0.4);
+    transform: scale(1.1);
+  }
+
   .footer {
     text-align: center;
     padding: 2rem;
@@ -937,6 +1205,14 @@
     .input-group {
       flex-direction: column;
     }
+
+    .episodes-list {
+      max-height: 350px;
+    }
+
+    .episode-card:hover {
+      transform: none;
+    }
   }
 
   @media (max-width: 480px) {
@@ -954,6 +1230,35 @@
 
     .logo {
       max-width: 280px;
+    }
+
+    .episodes-list {
+      max-height: 300px;
+    }
+
+    .episode-card {
+      padding: 0.6rem 0.75rem;
+      gap: 0.75rem;
+    }
+
+    .episode-number {
+      width: 32px;
+      height: 32px;
+      font-size: 0.8rem;
+    }
+
+    .episode-title {
+      font-size: 0.9rem;
+    }
+
+    .episode-play {
+      width: 28px;
+      height: 28px;
+    }
+
+    .episode-play svg {
+      width: 12px;
+      height: 12px;
     }
   }
 </style>

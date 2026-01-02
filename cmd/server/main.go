@@ -108,6 +108,8 @@ func main() {
 		r.Get("/shares/{token}", publicHandler.GetShareInfo)
 		r.Post("/shares/{token}/password", publicHandler.ValidatePassword)
 		r.Post("/shares/{token}/play", publicHandler.StartPlayback)
+		r.Get("/shares/{token}/episodes", publicHandler.GetShareEpisodes)
+		r.Post("/shares/{token}/episodes/{episodeId}/play", publicHandler.StartEpisodePlayback)
 		r.Post("/sessions/{sessionId}/heartbeat", publicHandler.Heartbeat)
 		r.Post("/sessions/{sessionId}/finish", publicHandler.FinishPlayback)
 
