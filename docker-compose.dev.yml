@@ -1,0 +1,73 @@
+version: '3.8'
+
+# Development environment with hot reload
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: jfshare-dev
+    volumes:
+      - .:/workspace:cached
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+      - node-modules:/workspace/web/node_modules
+    ports:
+      - "8097:8097"   # Backend (next to Jellyfin 8096)
+      - "5173:5173"   # Vite dev server
+    environment:
+      - JFSHARE_PORT=8097
+      - JFSHARE_DB_DSN=postgres://jfshare:jfshare@postgres:5432/jfshare?sslmode=disable
+      - JFSHARE_JELLYFIN_BASE_URL=${JELLYFIN_URL:-http://host.docker.internal:8096}
+      - JFSHARE_JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-your-api-key}
+      - JFSHARE_BACKEND_API_KEY=${BACKEND_API_KEY:-dev-backend-key-change-in-prod}
+      - JFSHARE_PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8097}
+      - JFSHARE_LOG_LEVEL=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    # For connecting to host services (like Jellyfin running on host)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: jfshare-db-dev
+    environment:
+      - POSTGRES_USER=jfshare
+      - POSTGRES_PASSWORD=jfshare
+      - POSTGRES_DB=jfshare
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Use 5433 externally to avoid conflicts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jfshare"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: jfshare-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@local.dev
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+
+volumes:
+  postgres-dev-data:
+  go-mod-cache:
+  go-build-cache:
+  node-modules:

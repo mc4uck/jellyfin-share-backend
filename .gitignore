@@ -1,0 +1,32 @@
+# Binaries
+/jfshare
+*.exe
+/tmp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node modules (frontend)
+web/node_modules/
+
+# Build artifacts
+web/dist/
+
+# Logs
+*.log
+
+# Test coverage
+coverage.out
+coverage.html

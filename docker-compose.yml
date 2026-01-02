@@ -1,0 +1,59 @@
+version: '3.8'
+
+# =============================================================================
+# PRODUCTION DOCKER COMPOSE
+# Usage: docker-compose up -d
+# =============================================================================
+
+services:
+  jfshare:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jfshare:latest
+    container_name: jfshare
+    restart: unless-stopped
+    ports:
+      - "8097:8097"
+    environment:
+      - JFSHARE_PORT=8097
+      - JFSHARE_DB_DSN=postgres://jfshare:${POSTGRES_PASSWORD:-jfshare}@postgres:5432/jfshare?sslmode=disable
+      - JFSHARE_JELLYFIN_BASE_URL=${JELLYFIN_URL}
+      - JFSHARE_JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      - JFSHARE_BACKEND_API_KEY=${BACKEND_API_KEY}
+      - JFSHARE_PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8097}
+      - JFSHARE_SESSION_HEARTBEAT_TIMEOUT_SECONDS=120
+      - JFSHARE_LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - jfshare-network
+    # Uncomment if Jellyfin runs on host
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: jfshare-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=jfshare
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-jfshare}
+      - POSTGRES_DB=jfshare
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jfshare"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jfshare-network
+
+volumes:
+  postgres_data:
+
+networks:
+  jfshare-network:
+    driver: bridge

@@ -1,0 +1,32 @@
+# Development container with Go, Node, and hot reload
+FROM golang:1.23-bookworm
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest
+
+# Install air for hot reload
+RUN go install github.com/air-verse/air@v1.61.0
+
+# Create non-root user for VS Code dev containers
+ARG USERNAME=vscode
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy go.mod for dependency caching (go.sum generated on build)
+COPY go.mod ./
+RUN go mod download
+
+# Default command: run both backend with hot reload and frontend dev server
+CMD ["sh", "-c", "cd /workspace/web && npm install && npm run dev & cd /workspace && air"]
