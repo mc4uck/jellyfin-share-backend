@@ -81,10 +81,12 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine which item to stream
-	// For Season shares, the itemId query param specifies the episode
+	// For Season shares, the itemId or MediaSourceId query param specifies the episode
 	itemID := share.JellyfinItemID
 	if episodeID := r.URL.Query().Get("itemId"); episodeID != "" {
 		itemID = episodeID
+	} else if mediaSourceID := r.URL.Query().Get("MediaSourceId"); mediaSourceID != "" {
+		itemID = mediaSourceID
 	}
 
 	// Build Jellyfin URL
