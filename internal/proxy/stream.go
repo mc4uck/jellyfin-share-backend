@@ -80,8 +80,15 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 		path = "master.m3u8"
 	}
 
+	// Determine which item to stream
+	// For Season shares, the itemId query param specifies the episode
+	itemID := share.JellyfinItemID
+	if episodeID := r.URL.Query().Get("itemId"); episodeID != "" {
+		itemID = episodeID
+	}
+
 	// Build Jellyfin URL
-	jellyfinURL := p.buildJellyfinStreamURL(share.JellyfinItemID, path, r.URL.RawQuery)
+	jellyfinURL := p.buildJellyfinStreamURL(itemID, path, r.URL.RawQuery)
 
 	// Proxy the request
 	p.proxyRequest(w, r, jellyfinURL)
