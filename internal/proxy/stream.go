@@ -118,7 +118,9 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	}
 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
-		// Segment file
+		// Segment file - remove AudioCodec param as it can confuse FFmpeg
+		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
+		params.Del("AudioCodec")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
