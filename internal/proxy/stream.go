@@ -111,6 +111,12 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
 		params.Set("VideoCodec", "h264")
 		params.Set("AudioCodec", "aac")
+		params.Set("MaxWidth", "1920")
+		params.Set("MaxHeight", "1080")
+		params.Set("MaxVideoBitrate", "10000000") // 10 Мбит/с
+		params.Set("VideoBitrate", "10000000")
+		params.Set("Profile", "high")             // Профиль High для 1080p
+		params.Set("Level", "41")
 		params.Set("Preset", "veryfast")
 	// params.Set("TranscodingContainer", "hls")
 	// params.Set("TranscodingProtocol", "hls")
@@ -128,9 +134,16 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
 		// Segment file - remove AudioCodec param as it can confuse FFmpeg
 		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
-		params.Del("Preset")
+		
 		params.Del("VideoCodec")
 		params.Del("AudioCodec")
+		params.Del("MaxWidth")
+		params.Del("MaxHeight")
+		params.Del("MaxVideoBitrate")
+		params.Del("VideoBitrate")
+		params.Del("Profile")
+		params.Del("Level")
+		params.Del("Preset")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
