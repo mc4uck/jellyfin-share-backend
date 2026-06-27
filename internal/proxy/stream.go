@@ -118,7 +118,10 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("VideoCodec", "h264")
 		params.Set("AudioCodec", "aac")
 
-		params.Set("vf", "format=yuv420p")
+		params.Set("CopyTimestamps", "true")
+		params.Set("TranscodingMaxVideoWidth", "1920")
+
+		// params.Set("vf", "format=yuv420p")
 		
 		params.Set("MaxVideoBitrate", "10000000") // 10 Мбит/с
 		params.Set("VideoBitrate", "10000000")
