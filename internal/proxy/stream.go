@@ -107,8 +107,8 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
 	params.Set("VideoCodec", "h264")
 	params.Set("AudioCodec", "aac")
-	params.Set("TranscodingContainer", "hls")
-	params.Set("TranscodingProtocol", "hls")
+	// params.Set("TranscodingContainer", "hls")
+	// params.Set("TranscodingProtocol", "hls")
     // ---------------------------------
 
 	// Handle different path types
