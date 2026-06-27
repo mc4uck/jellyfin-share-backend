@@ -98,18 +98,18 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 
 func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string {
 	baseURL := p.jf.BaseURL()
-	// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
-	params.Set("VideoCodec", "h264")
-	params.Set("AudioCodec", "aac")
-	params.Set("TranscodingContainer", "hls")
-	params.Set("TranscodingProtocol", "hls")
-    // ---------------------------------
 
 	// Parse existing query and ensure api_key is set (don't duplicate)
 	params, _ := url.ParseQuery(query)
 	if params.Get("api_key") == "" {
 		params.Set("api_key", p.jf.APIKey())
 	}
+		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
+	params.Set("VideoCodec", "h264")
+	params.Set("AudioCodec", "aac")
+	params.Set("TranscodingContainer", "hls")
+	params.Set("TranscodingProtocol", "hls")
+    // ---------------------------------
 
 	// Handle different path types
 	if strings.HasSuffix(path, ".m3u8") {
