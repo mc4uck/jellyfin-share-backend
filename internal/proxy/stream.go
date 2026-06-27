@@ -118,6 +118,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("Profile", "high")             // Профиль High для 1080p
 		params.Set("Level", "41")
 		params.Set("Preset", "veryfast")
+		params.Set("ClientProfile", "high")
 	// params.Set("TranscodingContainer", "hls")
 	// params.Set("TranscodingProtocol", "hls")
     // ---------------------------------
@@ -144,6 +145,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Del("Profile")
 		params.Del("Level")
 		params.Del("Preset")
+		params.Del("ClientProfile")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
