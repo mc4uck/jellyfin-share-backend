@@ -116,19 +116,20 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if strings.HasSuffix(path, ".m3u8") {
 		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
 		params.Set("VideoCodec", "h264")
-		params.Set("AudioCodec", "aac")
+		// params.Set("AudioCodec", "aac")
+		params.Del("AudioCodec")
 
-		params.Set("CopyTimestamps", "true")
+		// params.Set("CopyTimestamps", "true")
 		params.Set("TranscodingMaxVideoWidth", "1920")
 
-		params.Set("vf", "format=yuv420p")
+		// params.Set("vf", "format=yuv420p")
 		
 		params.Set("MaxVideoBitrate", "10000000") // 10 Мбит/с
-		params.Set("VideoBitrate", "10000000")
-		params.Set("Profile", "high")             // Профиль High для 1080p
-		params.Set("Level", "41")
-		params.Set("Preset", "veryfast")
-		params.Set("ClientProfile", "high")
+		// params.Set("VideoBitrate", "10000000")
+		// params.Set("Profile", "high")             // Профиль High для 1080p
+		// params.Set("Level", "41")
+		// params.Set("Preset", "veryfast")
+		// params.Set("ClientProfile", "high")
 
 		// Блокируем Direct Stream, чтобы FFmpeg всегда делал транскод
 		params.Set("AllowVideoStreamCopy", "false")
