@@ -119,6 +119,10 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("Level", "41")
 		params.Set("Preset", "veryfast")
 		params.Set("ClientProfile", "high")
+
+		// Блокируем Direct Stream, чтобы FFmpeg всегда делал транскод
+		params.Set("AllowVideoStreamCopy", "false")
+		params.Set("AllowAudioStreamCopy", "false")
 	// params.Set("TranscodingContainer", "hls")
 	// params.Set("TranscodingProtocol", "hls")
     // ---------------------------------
@@ -135,17 +139,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
 		// Segment file - remove AudioCodec param as it can confuse FFmpeg
 		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
-		
-		params.Del("VideoCodec")
 		params.Del("AudioCodec")
-		params.Del("MaxWidth")
-		params.Del("MaxHeight")
-		params.Del("MaxVideoBitrate")
-		params.Del("VideoBitrate")
-		params.Del("Profile")
-		params.Del("Level")
-		params.Del("Preset")
-		params.Del("ClientProfile")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
