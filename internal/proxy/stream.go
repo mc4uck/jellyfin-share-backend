@@ -104,15 +104,16 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if params.Get("api_key") == "" {
 		params.Set("api_key", p.jf.APIKey())
 	}
-		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
-	params.Set("VideoCodec", "h264")
-	params.Set("AudioCodec", "aac")
-	// params.Set("TranscodingContainer", "hls")
-	// params.Set("TranscodingProtocol", "hls")
-    // ---------------------------------
+		
 
 	// Handle different path types
 	if strings.HasSuffix(path, ".m3u8") {
+		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
+		params.Set("VideoCodec", "h264")
+		params.Set("AudioCodec", "aac")
+	// params.Set("TranscodingContainer", "hls")
+	// params.Set("TranscodingProtocol", "hls")
+    // ---------------------------------
 		// HLS manifest
 		if path == "master.m3u8" {
 			params.Set("MediaSourceId", itemID)
@@ -126,6 +127,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
 		// Segment file - remove AudioCodec param as it can confuse FFmpeg
 		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
+		params.Del("VideoCodec")
 		params.Del("AudioCodec")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
