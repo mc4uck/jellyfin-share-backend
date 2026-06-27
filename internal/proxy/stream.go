@@ -107,10 +107,10 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("api_key", key)
 	}
 
-	params_ts := url.Values{}
+	// params_ts := url.Values{}
 
-	params_ts.Set("api_key", key)
-	params_ts.Set("MediaSourceId", itemID)
+	// params_ts.Set("api_key", key)
+	// params_ts.Set("MediaSourceId", itemID)
 	
 	// Handle different path types
 	if strings.HasSuffix(path, ".m3u8") {
@@ -121,7 +121,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("CopyTimestamps", "true")
 		params.Set("TranscodingMaxVideoWidth", "1920")
 
-		// params.Set("vf", "format=yuv420p")
+		params.Set("vf", "format=yuv420p")
 		
 		params.Set("MaxVideoBitrate", "10000000") // 10 Мбит/с
 		params.Set("VideoBitrate", "10000000")
@@ -151,14 +151,16 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
 		// Segment file - remove AudioCodec param as it can confuse FFmpeg
 		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
-		// return baseURL + "/Videos/" + itemID + "/" + path + "?" + params_ts.Encode()
-		cleanPath := strings.Split(path, "?")[0]
-		cleanParams := url.Values{}
-		cleanParams.Set("api_key", key)
-		cleanParams.Set("MediaSourceId", itemID)
-		cleanParams.Set("DeviceId", "jfshare-backend")
+
+		params.Del("AudioCodec")
+		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
+		// cleanPath := strings.Split(path, "?")[0]
+		// cleanParams := url.Values{}
+		// cleanParams.Set("api_key", key)
+		// cleanParams.Set("MediaSourceId", itemID)
+		// cleanParams.Set("DeviceId", "jfshare-backend")
 		
-		return baseURL + "/Videos/" + itemID + "/" + cleanPath + "?" + cleanParams.Encode()
+		// return baseURL + "/Videos/" + itemID + "/" + cleanPath + "?" + cleanParams.Encode()
 	}
 
 	// Generic video stream
