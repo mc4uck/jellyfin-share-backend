@@ -122,6 +122,9 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// params.Set("CopyTimestamps", "true")
 		params.Set("TranscodingMaxVideoWidth", "1920")
 
+		params.Set("Deinterlace", "false")
+		params.Set("RequireAvc", "false")
+
 		// params.Set("vf", "format=yuv420p")
 		
 		params.Set("MaxVideoBitrate", "10000000") // 10 Мбит/с
@@ -133,7 +136,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 
 		// Блокируем Direct Stream, чтобы FFmpeg всегда делал транскод
 		params.Set("AllowVideoStreamCopy", "false")
-		params.Set("AllowAudioStreamCopy", "false")
+		params.Set("AllowAudioStreamCopy", "true")
 		params.Set("BreakOnNonKeyFrames", "True")
 	// params.Set("TranscodingContainer", "hls")
 	// params.Set("TranscodingProtocol", "hls")
