@@ -141,7 +141,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		if path == "master.m3u8" {
 			params.Set("MediaSourceId", itemID)
 			params.Set("DeviceId", "jfshare-backend")
-			params_ts.Set("DeviceId", "jfshare-backend")
+			// params_ts.Set("DeviceId", "jfshare-backend")
 			return baseURL + "/Videos/" + itemID + "/master.m3u8?" + params.Encode()
 		}
 		// Sub-playlist
