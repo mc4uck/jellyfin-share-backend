@@ -101,11 +101,17 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 
 	// Parse existing query and ensure api_key is set (don't duplicate)
 	params, _ := url.ParseQuery(query)
+	
+	key := p.jf.APIKey()
 	if params.Get("api_key") == "" {
-		params.Set("api_key", p.jf.APIKey())
+		params.Set("api_key", key)
 	}
-		
 
+	params_ts := url.Values{}
+
+	params_ts.Set("api_key", key)
+	params_ts.Set("MediaSourceId", itemID)
+	
 	// Handle different path types
 	if strings.HasSuffix(path, ".m3u8") {
 		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
@@ -141,8 +147,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
 		// Segment file - remove AudioCodec param as it can confuse FFmpeg
 		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
-		params.Del("AudioCodec")
-		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
+		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params_ts.Encode()
 	}
 
 	// Generic video stream
