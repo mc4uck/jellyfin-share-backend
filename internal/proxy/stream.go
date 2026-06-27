@@ -98,6 +98,12 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 
 func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string {
 	baseURL := p.jf.BaseURL()
+	// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
+	params.Set("VideoCodec", "h264")
+	params.Set("AudioCodec", "aac")
+	params.Set("TranscodingContainer", "hls")
+	params.Set("TranscodingProtocol", "hls")
+    // ---------------------------------
 
 	// Parse existing query and ensure api_key is set (don't duplicate)
 	params, _ := url.ParseQuery(query)
