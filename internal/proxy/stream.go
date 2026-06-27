@@ -141,6 +141,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("AllowVideoStreamCopy", "false")
 		params.Set("AllowAudioStreamCopy", "false")
 		params.Set("BreakOnNonKeyFrames", "True")
+		params.Set("EnableVideoProcessing", "false")///
 	// params.Set("TranscodingContainer", "hls")
 	// params.Set("TranscodingProtocol", "hls")
     // ---------------------------------
