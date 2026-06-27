@@ -117,7 +117,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
 		params.Set("VideoCodec", "h264")
 		// params.Set("AudioCodec", "aac")
-		params.Del("AudioCodec")
+		// params.Del("AudioCodec")
 
 		// params.Set("CopyTimestamps", "true")
 		params.Set("TranscodingMaxVideoWidth", "1920")
@@ -125,7 +125,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// params.Set("vf", "format=yuv420p")
 		
 		params.Set("MaxVideoBitrate", "10000000") // 10 Мбит/с
-		// params.Set("VideoBitrate", "10000000")
+		params.Set("VideoBitrate", "2500000")
 		// params.Set("Profile", "high")             // Профиль High для 1080p
 		// params.Set("Level", "41")
 		// params.Set("Preset", "veryfast")
