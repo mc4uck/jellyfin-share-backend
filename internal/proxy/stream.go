@@ -122,7 +122,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// params.Set("MaxVideoWidth", "854") // 480p вместо 1080p-1
 		params.Set("MaxWidth", "854") //480
 		params.Set("MaxHeight", "480") //480
-    	params.Set("TranscodingMaxVideoWidth", "854")//-1
+    	// params.Set("TranscodingMaxVideoWidth", "854")//-1
 		
 		// params.Set("CopyTimestamps", "true")
 		// params.Set("TranscodingMaxVideoWidth", "1920")//+1
@@ -138,16 +138,20 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		// params.Set("Level", "41")
 		params.Set("Profile", "baseline")
 		params.Set("Level", "30")
-		params.Set("Preset", "veryfast")//-1
+		params.Set("ToneMapping", "false")
+		// params.Set("Preset", "veryfast")//-1
 		// params.Set("ClientProfile", "high")
 
 		// Блокируем Direct Stream, чтобы FFmpeg всегда делал транскод
 		params.Set("AllowVideoStreamCopy", "false")
 		params.Set("AllowAudioStreamCopy", "false")
 		params.Set("BreakOnNonKeyFrames", "True")
-		params.Set("EnableVideoProcessing", "false")///
+		// params.Set("EnableVideoProcessing", "false")///
 	// params.Set("TranscodingContainer", "hls")
 	// params.Set("TranscodingProtocol", "hls")
+
+		params.Set("MaxMuxingQueueSize", "512") // Снижаем, чтобы не забивать RAM
+    	params.Set("MaxDelay", "5000000")
     // ---------------------------------
 		// HLS manifest
 		if path == "master.m3u8" {
