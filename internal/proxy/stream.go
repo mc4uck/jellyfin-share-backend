@@ -115,24 +115,24 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 	// Handle different path types
 	if strings.HasSuffix(path, ".m3u8") {
 		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
-		params.Set("VideoCodec", "h264")
+		params.Set("VideoCodec", "hevc")
 		params.Set("MaxWidth", "854") //480
 		params.Set("MaxHeight", "480") //480
 		params.Set("MaxVideoBitrate", "1500000")
 		params.Set("VideoBitrate", "1500000")
 
-		params.Set("Profile", "baseline")
-		params.Set("Level", "30")
 		params.Set("ToneMapping", "false")
+		params.Set("EnableColorSpaceConversion", "false")
 
-		params.Set("vf", "null")
+		params.Set("Profile", "main")
+		// params.Set("ToneMapping", "false")
+
+		// params.Set("vf", "null")
 
 		params.Set("AllowVideoStreamCopy", "false")
 		params.Set("AllowAudioStreamCopy", "false")
 		params.Set("BreakOnNonKeyFrames", "True")
-		// params.Set("EnableVideoProcessing", "false")///
-	// params.Set("TranscodingContainer", "hls")
-	// params.Set("TranscodingProtocol", "hls")
+	
 
 		params.Set("MaxMuxingQueueSize", "512") // Снижаем, чтобы не забивать RAM
     	params.Set("MaxDelay", "5000000")
