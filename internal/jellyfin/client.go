@@ -234,6 +234,8 @@ func (c *Client) GetHLSStreamURL(itemID string, mediaSourceID string) string {
 	params.Set("DeviceId", "jfshare-backend")
 	params.Set("PlaySessionId", "jfshare-"+itemID)
 
+	params.Set("SegmentContainer", "mp4")
+
 	return fmt.Sprintf("%s/Videos/%s/master.m3u8?%s", c.baseURL, itemID, params.Encode())
 }
 
