@@ -135,6 +135,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 			return baseURL + "/Videos/" + itemID + "/master.m3u8?" + params.Encode()
 		}
 		// Sub-playlist
+		params.Set("SegmentContainer", "mp4")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
