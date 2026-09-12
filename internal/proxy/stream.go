@@ -126,7 +126,10 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("BreakOnNonKeyFrames", "True")
 		params.Set("MaxMuxingQueueSize", "512") 
     	params.Set("MaxDelay", "5000000")
+		// Jellyfin 12: HEVC HLS через fragmented MP4
+		params.Set("SegmentContainer", "mp4")
     // ---------------------------------
+		
 		// HLS manifest
 		if path == "master.m3u8" {
 			params.Set("MediaSourceId", itemID)
@@ -135,7 +138,7 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 			return baseURL + "/Videos/" + itemID + "/master.m3u8?" + params.Encode()
 		}
 		// Sub-playlist
-		params.Set("SegmentContainer", "mp4")
+		
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
