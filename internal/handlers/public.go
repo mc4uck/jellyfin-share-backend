@@ -698,7 +698,15 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 		"itemId": childID,
 	})
 
-	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
+	var playbackURL string
+	if share.ItemType == "MusicAlbum" {
+		// Use a browser-native progressive MP3 stream for album tracks.
+		// This avoids HLS.js audio-only media errors while preserving
+		// the album queue/next-track logic in the frontend.
+		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/stream.mp3?itemId=" + childID
+	} else {
+		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
+	}
 
 	writeJSON(w, http.StatusOK, models.PlayResponse{
 		SessionID:   session.ID,

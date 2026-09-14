@@ -111,7 +111,26 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string, isAudio
 	}
 
 	if isAudio {
-		// Audio-only HLS. Do not pass the video transcoding parameters used below.
+		// Do not forward jfshare-only routing parameters to Jellyfin.
+		params.Del("itemId")
+		params.Del("seasonId")
+		params.Del("continue")
+
+		// Album tracks use a browser-native progressive MP3 stream.
+		// Jellyfin's /Audio/{itemId}/stream.{container} endpoint chooses
+		// the requested output codec/container from the URL and parameters.
+		if path == "stream.mp3" {
+			params.Set("Static", "false")
+			params.Set("mediaSourceId", itemID)
+			params.Set("DeviceId", "jfshare-backend")
+			params.Set("PlaySessionId", "jfshare-"+itemID)
+			params.Set("AudioCodec", "mp3")
+			params.Set("AudioBitrate", "192000")
+			params.Set("MaxAudioChannels", "2")
+			return baseURL + "/Audio/" + itemID + "/stream.mp3?" + params.Encode()
+		}
+
+		// Keep audio HLS as a fallback for any older/direct Audio URLs.
 		if strings.HasSuffix(path, ".m3u8") {
 			params.Set("AudioCodec", "aac")
 			params.Set("AudioBitrate", "192000")
@@ -130,13 +149,11 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string, isAudio
 			return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
 		}
 
-		// Audio HLS segment/sub-resource. Keep the same /Audio/{itemId}/... path.
 		if path != "" && path != "stream" {
 			params.Del("AudioCodec")
 			return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
 		}
 
-		// Generic audio stream fallback.
 		params.Set("Static", "true")
 		params.Set("mediaSourceId", itemID)
 		return baseURL + "/Audio/" + itemID + "/stream?" + params.Encode()

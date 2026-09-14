@@ -37,6 +37,24 @@
       return;
     }
 
+    // Music uses a progressive MP3 stream from the backend proxy.
+    // Do not pass audio-only playback through hls.js: on some Jellyfin
+    // audio HLS outputs hls.js raises a fatal MEDIA_ERROR even though
+    // the manifest itself loads successfully.
+    if (isAudio) {
+      mediaElement.src = playbackData.playbackUrl;
+      mediaElement.addEventListener(
+        "loadedmetadata",
+        () => {
+          mediaElement.play().catch((e) => {
+            console.log("Autoplay prevented:", e);
+          });
+        },
+        { once: true },
+      );
+      return;
+    }
+
     if (Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
