@@ -89,32 +89,61 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 		itemID = mediaSourceID
 	}
 
+	// MusicAlbum/Audio shares use Jellyfin's audio HLS endpoints.
+	isAudio := share.ItemType == "MusicAlbum" || share.ItemType == "Audio"
+
 	// Build Jellyfin URL
-	jellyfinURL := p.buildJellyfinStreamURL(itemID, path, r.URL.RawQuery)
+	jellyfinURL := p.buildJellyfinStreamURL(itemID, path, r.URL.RawQuery, isAudio)
 
 	// Proxy the request
 	p.proxyRequest(w, r, jellyfinURL)
 }
 
-func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string {
+func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string, isAudio bool) string {
 	baseURL := p.jf.BaseURL()
 
-	// Parse existing query and ensure api_key is set (don't duplicate)
+	// Parse existing query and ensure api_key is set (don't duplicate).
 	params, _ := url.ParseQuery(query)
-	
+
 	key := p.jf.APIKey()
 	if params.Get("api_key") == "" {
 		params.Set("api_key", key)
 	}
 
-	// params_ts := url.Values{}
+	if isAudio {
+		// Audio-only HLS. Do not pass the video transcoding parameters used below.
+		if strings.HasSuffix(path, ".m3u8") {
+			params.Set("AudioCodec", "aac")
+			params.Set("AudioBitrate", "192000")
+			params.Set("TranscodingMaxAudioChannels", "2")
+			params.Set("AllowAudioStreamCopy", "false")
+			params.Set("BreakOnNonKeyFrames", "True")
+			params.Set("SegmentContainer", "ts")
 
-	// params_ts.Set("api_key", key)
-	// params_ts.Set("MediaSourceId", itemID)
-	
-	// Handle different path types
+			if path == "master.m3u8" {
+				params.Set("MediaSourceId", itemID)
+				params.Set("DeviceId", "jfshare-backend")
+				params.Set("PlaySessionId", "jfshare-"+itemID)
+				return baseURL + "/Audio/" + itemID + "/master.m3u8?" + params.Encode()
+			}
+
+			return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
+		}
+
+		// Audio HLS segment/sub-resource. Keep the same /Audio/{itemId}/... path.
+		if path != "" && path != "stream" {
+			params.Del("AudioCodec")
+			return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
+		}
+
+		// Generic audio stream fallback.
+		params.Set("Static", "true")
+		params.Set("mediaSourceId", itemID)
+		return baseURL + "/Audio/" + itemID + "/stream?" + params.Encode()
+	}
+
+	// Video HLS: preserve the existing forced-transcoding behaviour.
 	if strings.HasSuffix(path, ".m3u8") {
-		// ПРИНУДИТЕЛЬНОЕ ТРАНСКОДИРОВАНИЕ
 		params.Set("VideoCodec", "hevc")
 		params.Set("MaxVideoBitrate", "1500000")
 		params.Set("VideoBitrate", "1500000")
@@ -124,40 +153,25 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string 
 		params.Set("AllowVideoStreamCopy", "false")
 		params.Set("AllowAudioStreamCopy", "false")
 		params.Set("BreakOnNonKeyFrames", "True")
-		params.Set("MaxMuxingQueueSize", "512") 
-    	params.Set("MaxDelay", "5000000")
-		// Jellyfin 12: HEVC HLS через fragmented MP4
+		params.Set("MaxMuxingQueueSize", "512")
+		params.Set("MaxDelay", "5000000")
 		params.Set("SegmentContainer", "mp4")
-    // ---------------------------------
-		
-		// HLS manifest
+
 		if path == "master.m3u8" {
 			params.Set("MediaSourceId", itemID)
 			params.Set("DeviceId", "jfshare-backend")
-			// params_ts.Set("DeviceId", "jfshare-backend")
 			return baseURL + "/Videos/" + itemID + "/master.m3u8?" + params.Encode()
 		}
-		// Sub-playlist
-		
+
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
 	if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m4s") || strings.HasSuffix(path, ".mp4") {
-		// Segment file - remove AudioCodec param as it can confuse FFmpeg
-		// (AudioCodec=m3u8 from manifest URLs is not a valid codec)
-
 		params.Del("AudioCodec")
 		return baseURL + "/Videos/" + itemID + "/" + path + "?" + params.Encode()
-		// cleanPath := strings.Split(path, "?")[0]
-		// cleanParams := url.Values{}
-		// cleanParams.Set("api_key", key)
-		// cleanParams.Set("MediaSourceId", itemID)
-		// cleanParams.Set("DeviceId", "jfshare-backend")
-		
-		// return baseURL + "/Videos/" + itemID + "/" + cleanPath + "?" + cleanParams.Encode()
 	}
 
-	// Generic video stream
+	// Generic video stream.
 	params.Set("Static", "true")
 	params.Set("mediaSourceId", itemID)
 	return baseURL + "/Videos/" + itemID + "/stream?" + params.Encode()

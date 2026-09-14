@@ -15,6 +15,8 @@
   $: showPasswordForm = needsPassword;
   $: isSeasonOrSeries =
     shareInfo.itemType === "Season" || shareInfo.itemType === "Series";
+  $: isMusicAlbum = shareInfo.itemType === "MusicAlbum";
+  $: hasChildList = isSeasonOrSeries || isMusicAlbum;
 
   let isPlaying = false;
   let playbackData = null;
@@ -29,6 +31,7 @@
   let episodesError = "";
   let episodesLoaded = false;
   let selectedSeason = null;
+  let currentTrackIndex = -1;
 
   onMount(async () => {
     const timeout = setTimeout(() => {
@@ -40,7 +43,7 @@
 
   // Load seasons/episodes initially and after password validation.
   $: if (
-    isSeasonOrSeries &&
+    hasChildList &&
     !needsPassword &&
     !episodesLoaded &&
     !episodesLoading
@@ -49,7 +52,7 @@
   }
 
   async function loadEpisodes(seasonId = null) {
-    if (!isSeasonOrSeries || episodesLoading) return;
+    if (!hasChildList || episodesLoading) return;
 
     episodesLoading = true;
     episodesLoaded = false;
@@ -185,14 +188,20 @@
     }
   }
 
-  async function startEpisodePlayback(episode) {
+  async function startEpisodePlayback(
+    episode,
+    trackIndex = -1,
+    albumContinuation = false,
+  ) {
     playError = "";
 
     try {
-      const query =
-        shareInfo.itemType === "Series" && selectedSeason
-          ? `?seasonId=${encodeURIComponent(selectedSeason.id)}`
-          : "";
+      let query = "";
+      if (shareInfo.itemType === "Series" && selectedSeason) {
+        query = `?seasonId=${encodeURIComponent(selectedSeason.id)}`;
+      } else if (isMusicAlbum && albumContinuation) {
+        query = "?continue=1";
+      }
 
       const response = await fetch(
         `/api/public/shares/${token}/episodes/${episode.id}/play${query}`,
@@ -210,12 +219,65 @@
       }
 
       playbackData = await response.json();
-      currentPlayingTitle = selectedSeason
-        ? `${selectedSeason.name} - E${episode.indexNumber}: ${episode.name}`
-        : `E${episode.indexNumber}: ${episode.name}`;
+
+      if (isMusicAlbum) {
+        currentTrackIndex = trackIndex;
+        currentPlayingTitle = `${episode.indexNumber ? `${episode.indexNumber}. ` : ""}${episode.name}`;
+      } else {
+        currentTrackIndex = -1;
+        currentPlayingTitle = selectedSeason
+          ? `${selectedSeason.name} - E${episode.indexNumber}: ${episode.name}`
+          : `E${episode.indexNumber}: ${episode.name}`;
+      }
+
       isPlaying = true;
     } catch (e) {
       playError = "Failed to connect to server";
+    }
+  }
+
+  async function startAlbumTrack(index, continuation = false) {
+    if (!isMusicAlbum || index < 0 || index >= episodes.length) return;
+    await startEpisodePlayback(episodes[index], index, continuation);
+  }
+
+  async function startAlbum() {
+    if (!isMusicAlbum) return;
+
+    if (!episodesLoaded && !episodesLoading) {
+      await loadEpisodes();
+    }
+
+    if (episodes.length === 0) {
+      playError = "No tracks found";
+      return;
+    }
+
+    await startAlbumTrack(0);
+  }
+
+  async function playNextTrack() {
+    if (!isMusicAlbum) return;
+    const nextIndex = currentTrackIndex + 1;
+    if (nextIndex >= episodes.length) {
+      handlePlayerClose();
+      return;
+    }
+    await startAlbumTrack(nextIndex, true);
+  }
+
+  async function playPreviousTrack() {
+    if (!isMusicAlbum) return;
+    const previousIndex = currentTrackIndex - 1;
+    if (previousIndex < 0) return;
+    await startAlbumTrack(previousIndex, true);
+  }
+
+  async function handlePlayerEnded() {
+    if (isMusicAlbum) {
+      await playNextTrack();
+    } else {
+      handlePlayerClose();
     }
   }
 
@@ -223,6 +285,7 @@
     isPlaying = false;
     playbackData = null;
     currentPlayingTitle = "";
+    currentTrackIndex = -1;
   }
 
   function handleImageLoad() {
@@ -236,11 +299,21 @@
 
 <div class="share-container">
   {#if isPlaying && playbackData}
-    <Player
-      {playbackData}
-      title={currentPlayingTitle || shareInfo.title}
-      on:close={handlePlayerClose}
-    />
+    {#key playbackData.sessionId}
+      <Player
+        {playbackData}
+        title={currentPlayingTitle || shareInfo.title}
+        isAudio={isMusicAlbum || shareInfo.itemType === "Audio"}
+        hasPrevious={isMusicAlbum && currentTrackIndex > 0}
+        hasNext={isMusicAlbum &&
+          currentTrackIndex >= 0 &&
+          currentTrackIndex < episodes.length - 1}
+        on:close={handlePlayerClose}
+        on:ended={handlePlayerEnded}
+        on:previous={playPreviousTrack}
+        on:next={playNextTrack}
+      />
+    {/key}
   {:else}
     <div class="backdrop-container">
       <div
@@ -492,11 +565,28 @@
                 {/if}
               </form>
             </div>
-          {:else if isSeasonOrSeries}
-            <!-- Season -> Episode navigation for Series, episode list for Season -->
+          {:else if hasChildList}
+            <!-- Series/Season navigation and MusicAlbum track list -->
             <div class="episodes-section">
+              {#if isMusicAlbum}
+                <button
+                  class="play-button album-play-button"
+                  on:click={startAlbum}
+                  disabled={episodesLoading || episodes.length === 0}
+                >
+                  <div class="play-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
+                  <span>Play Album</span>
+                </button>
+              {/if}
+
               <h3 class="episodes-header">
-                {#if shareInfo.itemType === "Series" && selectedSeason}
+                {#if isMusicAlbum}
+                  Tracks
+                {:else if shareInfo.itemType === "Series" && selectedSeason}
                   Episodes — {selectedSeason.name}
                 {:else}
                   {shareInfo.itemType === "Season" ? "Episodes" : "Seasons"}
@@ -519,32 +609,40 @@
               {#if episodesLoading}
                 <div class="episodes-loading">
                   <div class="loading-spinner"></div>
-                  <span
-                    >Loading {shareInfo.itemType === "Series" && !selectedSeason
-                      ? "seasons"
-                      : "episodes"}...</span
-                  >
+                  <span>
+                    Loading {isMusicAlbum
+                      ? "tracks"
+                      : shareInfo.itemType === "Series" && !selectedSeason
+                        ? "seasons"
+                        : "episodes"}...
+                  </span>
                 </div>
               {:else if episodesError}
                 <p class="error-msg">{episodesError}</p>
               {:else if episodes.length === 0}
                 <p class="episodes-empty">
-                  No {shareInfo.itemType === "Series" && !selectedSeason
-                    ? "seasons"
-                    : "episodes"} found
+                  No {isMusicAlbum
+                    ? "tracks"
+                    : shareInfo.itemType === "Series" && !selectedSeason
+                      ? "seasons"
+                      : "episodes"} found
                 </p>
               {:else}
                 <div class="episodes-list">
-                  {#each episodes as episode}
+                  {#each episodes as episode, index}
                     <button
                       class="episode-card"
                       on:click={() =>
-                        shareInfo.itemType === "Series" && !selectedSeason
-                          ? openSeason(episode)
-                          : startEpisodePlayback(episode)}
+                        isMusicAlbum
+                          ? startAlbumTrack(index)
+                          : shareInfo.itemType === "Series" && !selectedSeason
+                            ? openSeason(episode)
+                            : startEpisodePlayback(episode)}
                     >
                       <div class="episode-number">
-                        {#if shareInfo.itemType === "Series" && !selectedSeason}
+                        {#if isMusicAlbum}
+                          {episode.indexNumber || index + 1}
+                        {:else if shareInfo.itemType === "Series" && !selectedSeason}
                           S{episode.indexNumber || "?"}
                         {:else}
                           {episode.indexNumber || "?"}
@@ -559,7 +657,7 @@
                         {/if}
                       </div>
                       <div class="episode-play">
-                        {#if shareInfo.itemType === "Series" && !selectedSeason}
+                        {#if shareInfo.itemType === "Series" && !selectedSeason && !isMusicAlbum}
                           <svg viewBox="0 0 24 24" fill="currentColor">
                             <path d="M9 18l6-6-6-6" />
                           </svg>
@@ -1118,6 +1216,10 @@
     color: #ff6b6b;
     font-size: 0.85rem;
     margin: 0.75rem 0 0 0;
+  }
+
+  .album-play-button {
+    margin-bottom: 1.25rem;
   }
 
   /* Episodes Section */

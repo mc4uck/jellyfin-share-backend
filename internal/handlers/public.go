@@ -407,7 +407,8 @@ func (h *PublicHandler) FinishPlayback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "finished"})
 }
 
-// GetShareEpisodes returns seasons for a Series share, or episodes for a Season/selected Series season.
+// GetShareEpisodes returns seasons for a Series share, episodes for a Season/selected Series season,
+// or tracks for a MusicAlbum share. The route name is kept for backwards compatibility.
 func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
@@ -427,20 +428,29 @@ func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if share.ItemType != "Season" && share.ItemType != "Series" {
-		writeError(w, http.StatusBadRequest, "this share does not contain episodes")
+	if share.ItemType != "Season" && share.ItemType != "Series" && share.ItemType != "MusicAlbum" {
+		writeError(w, http.StatusBadRequest, "this share does not contain playable children")
 		return
 	}
 
 	var items []jellyfin.EpisodeInfo
 
-	if share.ItemType == "Season" {
+	switch share.ItemType {
+	case "Season":
 		items, err = h.jf.GetSeasonEpisodesForUser(
 			r.Context(),
 			share.JellyfinUserID,
 			share.JellyfinItemID,
 		)
-	} else {
+
+	case "MusicAlbum":
+		items, err = h.jf.GetAlbumTracksForUser(
+			r.Context(),
+			share.JellyfinUserID,
+			share.JellyfinItemID,
+		)
+
+	case "Series":
 		seasonID := r.URL.Query().Get("seasonId")
 
 		if seasonID == "" {
@@ -485,8 +495,8 @@ func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err != nil {
-		log.Printf("Failed to get episodes/seasons: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to get episodes")
+		log.Printf("Failed to get share children: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to get share items")
 		return
 	}
 
@@ -510,10 +520,11 @@ func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// StartEpisodePlayback starts playback for a specific episode within a season share
+// StartEpisodePlayback starts playback for a child item of a Season, Series or MusicAlbum share.
+// The existing route name is kept for backwards compatibility.
 func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
-	episodeID := chi.URLParam(r, "episodeId")
+	childID := chi.URLParam(r, "episodeId")
 
 	share, err := h.db.GetShareByToken(r.Context(), token)
 	if err != nil || share == nil {
@@ -521,97 +532,125 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Validate share state
 	if !share.IsValid() {
 		writeError(w, http.StatusGone, "share is no longer available")
 		return
 	}
 
-	// Check password if required
 	if share.RequiresPassword() && !h.sessions.GetSessionFromCookie(r, token) {
 		writeError(w, http.StatusUnauthorized, "password required")
 		return
 	}
 
-	// Episode playback is valid for a Season share or for a selected season inside a Series share.
-	if share.ItemType != "Season" && share.ItemType != "Series" {
-		writeError(w, http.StatusBadRequest, "episode playback only available for season or series shares")
+	if share.ItemType != "Season" && share.ItemType != "Series" && share.ItemType != "MusicAlbum" {
+		writeError(w, http.StatusBadRequest, "child playback only available for season, series or music album shares")
 		return
 	}
 
-	seasonID := share.JellyfinItemID
+	childValid := false
+	albumContinuation := share.ItemType == "MusicAlbum" && r.URL.Query().Get("continue") == "1"
 
-	if share.ItemType == "Series" {
-		seasonID = r.URL.Query().Get("seasonId")
-		if seasonID == "" {
-			writeError(w, http.StatusBadRequest, "seasonId is required for series playback")
-			return
-		}
-
-		// Verify the season belongs to the shared series.
-		seasons, err := h.jf.GetSeriesSeasonsForUser(
+	if share.ItemType == "MusicAlbum" {
+		tracks, tracksErr := h.jf.GetAlbumTracksForUser(
 			r.Context(),
 			share.JellyfinUserID,
 			share.JellyfinItemID,
 		)
-		if err != nil {
-			log.Printf("Failed to get series seasons: %v", err)
-			writeError(w, http.StatusInternalServerError, "failed to verify season")
+		if tracksErr != nil {
+			log.Printf("Failed to get album tracks: %v", tracksErr)
+			writeError(w, http.StatusInternalServerError, "failed to verify track")
 			return
 		}
 
-		seasonValid := false
-		for _, season := range seasons {
-			if season.ID == seasonID {
-				seasonValid = true
+		for _, track := range tracks {
+			if track.ID == childID {
+				childValid = true
 				break
 			}
 		}
 
-		if !seasonValid {
-			writeError(w, http.StatusForbidden, "season not part of this series")
+		if !childValid {
+			writeError(w, http.StatusForbidden, "track not part of this album")
+			return
+		}
+	} else {
+		seasonID := share.JellyfinItemID
+
+		if share.ItemType == "Series" {
+			seasonID = r.URL.Query().Get("seasonId")
+			if seasonID == "" {
+				writeError(w, http.StatusBadRequest, "seasonId is required for series playback")
+				return
+			}
+
+			seasons, seasonsErr := h.jf.GetSeriesSeasonsForUser(
+				r.Context(),
+				share.JellyfinUserID,
+				share.JellyfinItemID,
+			)
+			if seasonsErr != nil {
+				log.Printf("Failed to get series seasons: %v", seasonsErr)
+				writeError(w, http.StatusInternalServerError, "failed to verify season")
+				return
+			}
+
+			seasonValid := false
+			for _, season := range seasons {
+				if season.ID == seasonID {
+					seasonValid = true
+					break
+				}
+			}
+
+			if !seasonValid {
+				writeError(w, http.StatusForbidden, "season not part of this series")
+				return
+			}
+		}
+
+		episodes, episodesErr := h.jf.GetSeasonEpisodesForUser(
+			r.Context(),
+			share.JellyfinUserID,
+			seasonID,
+		)
+		if episodesErr != nil {
+			log.Printf("Failed to get episodes: %v", episodesErr)
+			writeError(w, http.StatusInternalServerError, "failed to verify episode")
+			return
+		}
+
+		for _, episode := range episodes {
+			if episode.ID == childID {
+				childValid = true
+				break
+			}
+		}
+
+		if !childValid {
+			writeError(w, http.StatusForbidden, "episode not part of this season")
 			return
 		}
 	}
 
-	// Verify the episode belongs to the selected season.
-	episodes, err := h.jf.GetSeasonEpisodesForUser(
-		r.Context(),
-		share.JellyfinUserID,
-		seasonID,
-	)
-	if err != nil {
-		log.Printf("Failed to get episodes: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to verify episode")
-		return
-	}
-
-	episodeValid := false
-	for _, ep := range episodes {
-		if ep.ID == episodeID {
-			episodeValid = true
-			break
-		}
-	}
-
-	if !episodeValid {
-		writeError(w, http.StatusForbidden, "episode not part of this season")
-		return
-	}
-
-	// Clean up stale sessions first
+	// Clean up stale sessions first.
 	staleCount, _ := h.db.TerminateStaleSessionsForShare(r.Context(), share.ID, h.cfg.SessionHeartbeatTimeout)
 	if staleCount > 0 {
 		h.db.ReconcileConcurrentViewers(r.Context(), share.ID, h.cfg.SessionHeartbeatTimeout)
 		share, _ = h.db.GetShareByToken(r.Context(), token)
 	}
 
-	// Check limits
-	if !share.CanStartNewPlay() {
+	if albumContinuation {
+		// Continuing an already-started album should not consume another MaxTotalPlays slot,
+		// but it must still respect the concurrent-viewer limit.
+		if share.MaxConcurrentViewers.Valid && int64(share.CurrentConcurrentViewers) >= share.MaxConcurrentViewers.Int64 {
+			writeError(w, http.StatusForbidden, "maximum concurrent viewers reached")
+			return
+		}
+	} else if !share.CanStartNewPlay() {
 		ipHash := middleware.GetIPHash(r.Context())
 		h.db.LogAuditEvent(r.Context(), database.AuditEventPlaybackDenied, &share.ID, nil, nil, &ipHash, map[string]interface{}{
-			"reason":    "limit_reached",
-			"episodeId": episodeID,
+			"reason": "limit_reached",
+			"itemId": childID,
 		})
 
 		if share.MaxTotalPlays.Valid && int64(share.TotalPlays) >= share.MaxTotalPlays.Int64 {
@@ -622,7 +661,6 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Create session for the episode
 	sessionToken := middleware.GenerateSecureToken(32)
 	session := &models.ShareSession{
 		ID:              uuid.New(),
@@ -632,7 +670,6 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 		LastHeartbeatAt: time.Now(),
 	}
 
-	// Store episode ID in session (we'll use client IP hash field for now, or add a note)
 	ipHash := middleware.GetIPHash(r.Context())
 	if ipHash != "" {
 		session.ClientIPHash = sql.NullString{String: ipHash, Valid: true}
@@ -651,18 +688,17 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Increment counters
-	if err := h.db.IncrementPlayCount(r.Context(), share.ID); err != nil {
-		log.Printf("Failed to increment play count: %v", err)
+	if !albumContinuation {
+		if err := h.db.IncrementPlayCount(r.Context(), share.ID); err != nil {
+			log.Printf("Failed to increment play count: %v", err)
+		}
 	}
 
-	// Log audit event
 	h.db.LogAuditEvent(r.Context(), database.AuditEventPlaybackStarted, &share.ID, &session.ID, nil, &ipHash, map[string]interface{}{
-		"episodeId": episodeID,
+		"itemId": childID,
 	})
 
-	// Generate playback URL for the specific episode
-	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + episodeID
+	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
 
 	writeJSON(w, http.StatusOK, models.PlayResponse{
 		SessionID:   session.ID,
