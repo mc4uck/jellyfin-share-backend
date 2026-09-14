@@ -317,6 +317,7 @@ func (p *StreamProxy) ServeImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	
 	// Enable caching for images
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
