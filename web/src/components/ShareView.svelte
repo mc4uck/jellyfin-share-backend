@@ -1,6 +1,6 @@
 <script>
-  import { onMount, createEventDispatcher } from "svelte";
-  import Player from "./Player.svelte";
+  import { onMount, createEventDispatcher } from 'svelte';
+  import Player from './Player.svelte';
 
   export let shareInfo;
   export let token;
@@ -8,27 +8,26 @@
   const dispatch = createEventDispatcher();
 
   let needsPassword = shareInfo.requiresPassword;
-  let passwordInput = "";
-  let passwordError = "";
+  let passwordInput = '';
+  let passwordError = '';
   let passwordLoading = false;
 
   $: showPasswordForm = needsPassword;
-  $: isSeasonOrSeries =
-    shareInfo.itemType === "Season" || shareInfo.itemType === "Series";
-  $: isMusicAlbum = shareInfo.itemType === "MusicAlbum";
+  $: isSeasonOrSeries = shareInfo.itemType === 'Season' || shareInfo.itemType === 'Series';
+  $: isMusicAlbum = shareInfo.itemType === 'MusicAlbum';
   $: hasChildList = isSeasonOrSeries || isMusicAlbum;
 
   let isPlaying = false;
   let playbackData = null;
-  let playError = "";
+  let playError = '';
   let imageLoaded = !shareInfo.posterUrl;
   let showFullCast = false;
-  let currentPlayingTitle = "";
+  let currentPlayingTitle = '';
 
   // Episode/season list for Season/Series
   let episodes = [];
   let episodesLoading = false;
-  let episodesError = "";
+  let episodesError = '';
   let episodesLoaded = false;
   let selectedSeason = null;
   let currentTrackIndex = -1;
@@ -42,12 +41,7 @@
   });
 
   // Load seasons/episodes initially and after password validation.
-  $: if (
-    hasChildList &&
-    !needsPassword &&
-    !episodesLoaded &&
-    !episodesLoading
-  ) {
+  $: if (hasChildList && !needsPassword && !episodesLoaded && !episodesLoading) {
     loadEpisodes(selectedSeason?.id || null);
   }
 
@@ -56,20 +50,17 @@
 
     episodesLoading = true;
     episodesLoaded = false;
-    episodesError = "";
+    episodesError = '';
 
     try {
-      const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : "";
-      const response = await fetch(
-        `/api/public/shares/${token}/episodes${query}`,
-        {
-          credentials: "include",
-        },
-      );
+      const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : '';
+      const response = await fetch(`/api/public/shares/${token}/episodes${query}`, {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        episodesError = data.error || "Failed to load episodes";
+        episodesError = data.error || 'Failed to load episodes';
         episodes = [];
         return;
       }
@@ -77,7 +68,7 @@
       const data = await response.json();
       episodes = data.episodes || [];
     } catch (e) {
-      episodesError = "Failed to load episodes";
+      episodesError = 'Failed to load episodes';
       episodes = [];
     } finally {
       episodesLoading = false;
@@ -89,7 +80,7 @@
     selectedSeason = season;
     episodes = [];
     episodesLoaded = false;
-    playError = "";
+    playError = '';
     await loadEpisodes(season.id);
   }
 
@@ -97,12 +88,12 @@
     selectedSeason = null;
     episodes = [];
     episodesLoaded = false;
-    playError = "";
+    playError = '';
     await loadEpisodes();
   }
 
   function formatDuration(seconds) {
-    if (!seconds) return "";
+    if (!seconds) return '';
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     if (hours > 0) return `${hours}h ${minutes}m`;
@@ -113,7 +104,7 @@
     const expiry = new Date(expiresAt);
     const now = new Date();
     const diff = expiry - now;
-    if (diff <= 0) return "Expired";
+    if (diff <= 0) return 'Expired';
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(hours / 24);
     if (days > 0) return `${days}d ${hours % 24}h`;
@@ -132,89 +123,78 @@
 
   function getPlaysPercentage() {
     if (!shareInfo.maxTotalPlays) return 100;
-    return (
-      ((shareInfo.maxTotalPlays - shareInfo.totalPlays) /
-        shareInfo.maxTotalPlays) *
-      100
-    );
+    return ((shareInfo.maxTotalPlays - shareInfo.totalPlays) / shareInfo.maxTotalPlays) * 100;
   }
 
   async function submitPassword() {
     if (!passwordInput.trim()) {
-      passwordError = "Please enter a password";
+      passwordError = 'Please enter a password';
       return;
     }
     passwordLoading = true;
-    passwordError = "";
+    passwordError = '';
     try {
       const response = await fetch(`/api/public/shares/${token}/password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: passwordInput }),
-        credentials: "include",
+        credentials: 'include'
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        passwordError = data.error || "Incorrect password";
+        passwordError = data.error || 'Incorrect password';
       } else {
         needsPassword = false;
-        passwordInput = "";
+        passwordInput = '';
       }
     } catch (e) {
-      passwordError = "Failed to validate password";
+      passwordError = 'Failed to validate password';
     } finally {
       passwordLoading = false;
     }
   }
 
   async function startPlayback() {
-    playError = "";
+    playError = '';
     try {
       const response = await fetch(`/api/public/shares/${token}/play`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        playError = data.error || "Failed to start playback";
+        playError = data.error || 'Failed to start playback';
         return;
       }
       playbackData = await response.json();
       currentPlayingTitle = shareInfo.title;
       isPlaying = true;
     } catch (e) {
-      playError = "Failed to connect to server";
+      playError = 'Failed to connect to server';
     }
   }
 
-  async function startEpisodePlayback(
-    episode,
-    trackIndex = -1,
-    albumContinuation = false,
-  ) {
-    playError = "";
+  async function startEpisodePlayback(episode, trackIndex = -1, albumContinuation = false) {
+    playError = '';
 
     try {
-      let query = "";
-      if (shareInfo.itemType === "Series" && selectedSeason) {
+      let query = '';
+      if (shareInfo.itemType === 'Series' && selectedSeason) {
         query = `?seasonId=${encodeURIComponent(selectedSeason.id)}`;
       } else if (isMusicAlbum && albumContinuation) {
-        query = "?continue=1";
+        query = '?continue=1';
       }
 
-      const response = await fetch(
-        `/api/public/shares/${token}/episodes/${episode.id}/play${query}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        },
-      );
+      const response = await fetch(`/api/public/shares/${token}/episodes/${episode.id}/play${query}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        playError = data.error || "Failed to start playback";
+        playError = data.error || 'Failed to start playback';
         return;
       }
 
@@ -222,7 +202,7 @@
 
       if (isMusicAlbum) {
         currentTrackIndex = trackIndex;
-        currentPlayingTitle = `${episode.indexNumber ? `${episode.indexNumber}. ` : ""}${episode.name}`;
+        currentPlayingTitle = `${episode.indexNumber ? `${episode.indexNumber}. ` : ''}${episode.name}`;
       } else {
         currentTrackIndex = -1;
         currentPlayingTitle = selectedSeason
@@ -232,7 +212,7 @@
 
       isPlaying = true;
     } catch (e) {
-      playError = "Failed to connect to server";
+      playError = 'Failed to connect to server';
     }
   }
 
@@ -249,7 +229,7 @@
     }
 
     if (episodes.length === 0) {
-      playError = "No tracks found";
+      playError = 'No tracks found';
       return;
     }
 
@@ -284,7 +264,7 @@
   function handlePlayerClose() {
     isPlaying = false;
     playbackData = null;
-    currentPlayingTitle = "";
+    currentPlayingTitle = '';
     currentTrackIndex = -1;
   }
 
@@ -303,11 +283,13 @@
       <Player
         {playbackData}
         title={currentPlayingTitle || shareInfo.title}
-        isAudio={isMusicAlbum || shareInfo.itemType === "Audio"}
+        isAudio={isMusicAlbum || shareInfo.itemType === 'Audio'}
+        coverUrl={shareInfo.posterUrl ? `${shareInfo.posterUrl}?maxWidth=700` : ''}
+        subtitle={isMusicAlbum ? shareInfo.title : ''}
+        currentIndex={isMusicAlbum ? currentTrackIndex : -1}
+        totalItems={isMusicAlbum ? episodes.length : 0}
         hasPrevious={isMusicAlbum && currentTrackIndex > 0}
-        hasNext={isMusicAlbum &&
-          currentTrackIndex >= 0 &&
-          currentTrackIndex < episodes.length - 1}
+        hasNext={isMusicAlbum && currentTrackIndex >= 0 && currentTrackIndex < episodes.length - 1}
         on:close={handlePlayerClose}
         on:ended={handlePlayerEnded}
         on:previous={playPreviousTrack}
@@ -316,11 +298,7 @@
     {/key}
   {:else}
     <div class="backdrop-container">
-      <div
-        class="backdrop"
-        style="background-image: url('{shareInfo.backdropUrl ||
-          shareInfo.posterUrl}')"
-      ></div>
+      <div class="backdrop" style="background-image: url('{shareInfo.backdropUrl || shareInfo.posterUrl}')"></div>
       <div class="backdrop-gradient"></div>
     </div>
 
@@ -345,9 +323,7 @@
                 class:loaded={imageLoaded}
               />
               {#if shareInfo.videoQuality}
-                <div class="quality-badge">
-                  {shareInfo.videoQuality.resolution}
-                </div>
+                <div class="quality-badge">{shareInfo.videoQuality.resolution}</div>
               {/if}
             </div>
           </div>
@@ -369,14 +345,10 @@
               <span class="badge rating-badge">{shareInfo.officialRating}</span>
             {/if}
             {#if shareInfo.runtimeSeconds}
-              <span class="badge"
-                >{formatDuration(shareInfo.runtimeSeconds)}</span
-              >
+              <span class="badge">{formatDuration(shareInfo.runtimeSeconds)}</span>
             {/if}
             {#if shareInfo.videoQuality}
-              <span class="badge quality"
-                >{shareInfo.videoQuality.resolution}</span
-              >
+              <span class="badge quality">{shareInfo.videoQuality.resolution}</span>
             {/if}
           </div>
 
@@ -387,23 +359,16 @@
                 <div class="rating-item">
                   <div class="rating-icon star">
                     <svg viewBox="0 0 24 24" fill="currentColor">
-                      <path
-                        d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
-                      />
+                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
                     </svg>
                   </div>
-                  <div class="rating-value">
-                    {formatRating(shareInfo.communityRating)}
-                  </div>
+                  <div class="rating-value">{formatRating(shareInfo.communityRating)}</div>
                   <div class="rating-label">User Score</div>
                 </div>
               {/if}
               {#if shareInfo.criticRating > 0}
                 <div class="rating-item">
-                  <div
-                    class="rating-icon tomato"
-                    class:fresh={shareInfo.criticRating >= 60}
-                  >
+                  <div class="rating-icon tomato" class:fresh={shareInfo.criticRating >= 60}>
                     {shareInfo.criticRating}%
                   </div>
                   <div class="rating-label">Critics</div>
@@ -429,11 +394,8 @@
           <!-- Directors -->
           {#if shareInfo.directors && shareInfo.directors.length > 0}
             <div class="credits-row">
-              <span class="credits-label"
-                >Director{shareInfo.directors.length > 1 ? "s" : ""}</span
-              >
-              <span class="credits-value">{shareInfo.directors.join(", ")}</span
-              >
+              <span class="credits-label">Director{shareInfo.directors.length > 1 ? 's' : ''}</span>
+              <span class="credits-value">{shareInfo.directors.join(', ')}</span>
             </div>
           {/if}
 
@@ -451,18 +413,13 @@
               <div class="cast-header">
                 <span class="credits-label">Cast</span>
                 {#if shareInfo.actors.length > 4}
-                  <button
-                    class="show-more-btn"
-                    on:click={() => (showFullCast = !showFullCast)}
-                  >
-                    {showFullCast
-                      ? "Show less"
-                      : `+${shareInfo.actors.length - 4} more`}
+                  <button class="show-more-btn" on:click={() => showFullCast = !showFullCast}>
+                    {showFullCast ? 'Show less' : `+${shareInfo.actors.length - 4} more`}
                   </button>
                 {/if}
               </div>
               <div class="cast-list">
-                {#each showFullCast ? shareInfo.actors : shareInfo.actors.slice(0, 4) as actor}
+                {#each (showFullCast ? shareInfo.actors : shareInfo.actors.slice(0, 4)) as actor}
                   <div class="actor">
                     <span class="actor-name">{actor.name}</span>
                     {#if actor.role}
@@ -478,14 +435,9 @@
           {#if shareInfo.videoQuality}
             <div class="quality-info">
               <svg viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM9 8h2v8H9zm4 0h2v8h-2z"
-                />
+                <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM9 8h2v8H9zm4 0h2v8h-2z"/>
               </svg>
-              <span
-                >{shareInfo.videoQuality.width}x{shareInfo.videoQuality
-                  .height}</span
-              >
+              <span>{shareInfo.videoQuality.width}x{shareInfo.videoQuality.height}</span>
               {#if shareInfo.videoQuality.codec}
                 <span class="divider">|</span>
                 <span>{shareInfo.videoQuality.codec.toUpperCase()}</span>
@@ -502,17 +454,14 @@
             <div class="plays-info">
               <div class="plays-header">
                 <span class="plays-label">Plays remaining</span>
-                <span class="plays-count"
-                  >{getPlaysRemaining()} / {shareInfo.maxTotalPlays}</span
-                >
+                <span class="plays-count">{getPlaysRemaining()} / {shareInfo.maxTotalPlays}</span>
               </div>
               <div class="plays-bar">
                 <div
                   class="plays-fill"
                   style="width: {getPlaysPercentage()}%"
                   class:low={getPlaysPercentage() <= 33}
-                  class:medium={getPlaysPercentage() > 33 &&
-                    getPlaysPercentage() <= 66}
+                  class:medium={getPlaysPercentage() > 33 && getPlaysPercentage() <= 66}
                 ></div>
               </div>
             </div>
@@ -521,9 +470,7 @@
           <!-- Expiry Warning -->
           <div class="expiry-info">
             <svg viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6z"
-              />
+              <path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6z"/>
             </svg>
             <span>Expires in {formatExpiry(shareInfo.expiresAt)}</span>
           </div>
@@ -533,9 +480,7 @@
             <div class="password-section">
               <div class="password-header">
                 <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
-                  />
+                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
                 </svg>
                 <span>Password Required</span>
               </div>
@@ -548,11 +493,7 @@
                     disabled={passwordLoading}
                     class:error={passwordError}
                   />
-                  <button
-                    type="submit"
-                    disabled={passwordLoading}
-                    class="unlock-btn"
-                  >
+                  <button type="submit" disabled={passwordLoading} class="unlock-btn">
                     {#if passwordLoading}
                       <div class="btn-spinner"></div>
                     {:else}
@@ -565,128 +506,111 @@
                 {/if}
               </form>
             </div>
-          {:else if hasChildList}
-            <!-- Series/Season navigation and MusicAlbum track list -->
-            <div class="episodes-section">
-              {#if isMusicAlbum}
-                <button
-                  class="play-button album-play-button"
-                  on:click={startAlbum}
-                  disabled={episodesLoading || episodes.length === 0}
-                >
-                  <div class="play-icon">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                  <span>Play Album</span>
-                </button>
-              {/if}
-
-              <h3 class="episodes-header">
+          {:else}
+            {#if hasChildList}
+              <!-- Series/Season navigation and MusicAlbum track list -->
+              <div class="episodes-section">
                 {#if isMusicAlbum}
-                  Tracks
-                {:else if shareInfo.itemType === "Series" && selectedSeason}
-                  Episodes — {selectedSeason.name}
+                  <button class="play-button album-play-button" on:click={startAlbum} disabled={episodesLoading || episodes.length === 0}>
+                    <div class="play-icon">
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    </div>
+                    <span>Play Album</span>
+                  </button>
+                {/if}
+
+                <h3 class="episodes-header">
+                  {#if isMusicAlbum}
+                    Tracks
+                  {:else if shareInfo.itemType === 'Series' && selectedSeason}
+                    Episodes — {selectedSeason.name}
+                  {:else}
+                    {shareInfo.itemType === 'Season' ? 'Episodes' : 'Seasons'}
+                  {/if}
+                  {#if episodes.length > 0}
+                    <span class="episodes-count">({episodes.length})</span>
+                  {/if}
+                </h3>
+
+                {#if shareInfo.itemType === 'Series' && selectedSeason}
+                  <button type="button" class="season-back" on:click={backToSeasons}>
+                    ← Back to seasons
+                  </button>
+                {/if}
+
+                {#if episodesLoading}
+                  <div class="episodes-loading">
+                    <div class="loading-spinner"></div>
+                    <span>
+                      Loading {isMusicAlbum ? 'tracks' : (shareInfo.itemType === 'Series' && !selectedSeason ? 'seasons' : 'episodes')}...
+                    </span>
+                  </div>
+                {:else if episodesError}
+                  <p class="error-msg">{episodesError}</p>
+                {:else if episodes.length === 0}
+                  <p class="episodes-empty">
+                    No {isMusicAlbum ? 'tracks' : (shareInfo.itemType === 'Series' && !selectedSeason ? 'seasons' : 'episodes')} found
+                  </p>
                 {:else}
-                  {shareInfo.itemType === "Season" ? "Episodes" : "Seasons"}
-                {/if}
-                {#if episodes.length > 0}
-                  <span class="episodes-count">({episodes.length})</span>
-                {/if}
-              </h3>
-
-              {#if shareInfo.itemType === "Series" && selectedSeason}
-                <button
-                  type="button"
-                  class="season-back"
-                  on:click={backToSeasons}
-                >
-                  ← Back to seasons
-                </button>
-              {/if}
-
-              {#if episodesLoading}
-                <div class="episodes-loading">
-                  <div class="loading-spinner"></div>
-                  <span>
-                    Loading {isMusicAlbum
-                      ? "tracks"
-                      : shareInfo.itemType === "Series" && !selectedSeason
-                        ? "seasons"
-                        : "episodes"}...
-                  </span>
-                </div>
-              {:else if episodesError}
-                <p class="error-msg">{episodesError}</p>
-              {:else if episodes.length === 0}
-                <p class="episodes-empty">
-                  No {isMusicAlbum
-                    ? "tracks"
-                    : shareInfo.itemType === "Series" && !selectedSeason
-                      ? "seasons"
-                      : "episodes"} found
-                </p>
-              {:else}
-                <div class="episodes-list">
-                  {#each episodes as episode, index}
-                    <button
-                      class="episode-card"
-                      on:click={() =>
-                        isMusicAlbum
+                  <div class="episodes-list">
+                    {#each episodes as episode, index}
+                      <button
+                        class="episode-card"
+                        on:click={() => isMusicAlbum
                           ? startAlbumTrack(index)
-                          : shareInfo.itemType === "Series" && !selectedSeason
+                          : (shareInfo.itemType === 'Series' && !selectedSeason
                             ? openSeason(episode)
-                            : startEpisodePlayback(episode)}
-                    >
-                      <div class="episode-number">
-                        {#if isMusicAlbum}
-                          {episode.indexNumber || index + 1}
-                        {:else if shareInfo.itemType === "Series" && !selectedSeason}
-                          S{episode.indexNumber || "?"}
-                        {:else}
-                          {episode.indexNumber || "?"}
-                        {/if}
-                      </div>
-                      <div class="episode-info">
-                        <div class="episode-title">{episode.name}</div>
-                        {#if episode.runtimeSeconds}
-                          <div class="episode-meta">
-                            {formatDuration(episode.runtimeSeconds)}
-                          </div>
-                        {/if}
-                      </div>
-                      <div class="episode-play">
-                        {#if shareInfo.itemType === "Series" && !selectedSeason && !isMusicAlbum}
-                          <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M9 18l6-6-6-6" />
-                          </svg>
-                        {:else}
-                          <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        {/if}
-                      </div>
-                    </button>
-                  {/each}
-                </div>
-              {/if}
+                            : startEpisodePlayback(episode))}
+                      >
+                        <div class="episode-number">
+                          {#if isMusicAlbum}
+                            {episode.indexNumber || index + 1}
+                          {:else if shareInfo.itemType === 'Series' && !selectedSeason}
+                            S{episode.indexNumber || '?'}
+                          {:else}
+                            {episode.indexNumber || '?'}
+                          {/if}
+                        </div>
+                        <div class="episode-info">
+                          <div class="episode-title">{episode.name}</div>
+                          {#if episode.runtimeSeconds}
+                            <div class="episode-meta">{formatDuration(episode.runtimeSeconds)}</div>
+                          {/if}
+                        </div>
+                        <div class="episode-play">
+                          {#if shareInfo.itemType === 'Series' && !selectedSeason && !isMusicAlbum}
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                          {:else}
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          {/if}
+                        </div>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
 
+                {#if playError}
+                  <p class="error-msg">{playError}</p>
+                {/if}
+              </div>
+            {:else}
+              <button class="play-button" on:click={startPlayback}>
+                <div class="play-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                </div>
+                <span>Play Now</span>
+              </button>
               {#if playError}
                 <p class="error-msg">{playError}</p>
               {/if}
-            </div>
-          {:else}
-            <button class="play-button" on:click={startPlayback}>
-              <div class="play-icon">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-              <span>Play Now</span>
-            </button>
-            {#if playError}
-              <p class="error-msg">{playError}</p>
             {/if}
           {/if}
         </div>
@@ -758,7 +682,7 @@
     max-width: 400px;
     max-height: 120px;
     width: auto;
-    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.5));
+    filter: drop-shadow(0 4px 20px rgba(0,0,0,0.5));
   }
 
   @keyframes fadeInDown {
@@ -833,7 +757,7 @@
     line-height: 1.1;
     margin: 0;
     color: #fff;
-    text-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 4px 30px rgba(0,0,0,0.5);
   }
 
   .meta-badges {
@@ -843,27 +767,23 @@
   }
 
   .badge {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
     padding: 0.35rem 0.75rem;
     border-radius: 4px;
     font-size: 0.8rem;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255,255,255,0.9);
   }
 
   .badge.rating-badge {
-    border-color: rgba(255, 200, 100, 0.4);
+    border-color: rgba(255,200,100,0.4);
     color: rgb(255, 200, 100);
   }
 
   .badge.quality {
-    background: linear-gradient(
-      135deg,
-      rgba(0, 212, 255, 0.2),
-      rgba(0, 150, 200, 0.2)
-    );
-    border-color: rgba(0, 212, 255, 0.4);
+    background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,150,200,0.2));
+    border-color: rgba(0,212,255,0.4);
     color: #00d4ff;
   }
 
@@ -915,7 +835,7 @@
 
   .rating-label {
     font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255,255,255,0.5);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -928,21 +848,21 @@
 
   .genre-tag {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255,255,255,0.3);
     padding: 0.3rem 0.8rem;
     border-radius: 20px;
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(255,255,255,0.8);
     transition: all 0.2s;
   }
 
   .genre-tag:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.5);
   }
 
   .overview {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255,255,255,0.75);
     line-height: 1.7;
     font-size: 0.95rem;
     margin: 0;
@@ -955,12 +875,12 @@
   }
 
   .credits-label {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255,255,255,0.5);
     min-width: 70px;
   }
 
   .credits-value {
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255,255,255,0.9);
   }
 
   .cast-section {
@@ -994,7 +914,7 @@
   }
 
   .actor {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255,255,255,0.05);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     display: flex;
@@ -1004,12 +924,12 @@
 
   .actor-name {
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255,255,255,0.9);
   }
 
   .actor-role {
     font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255,255,255,0.5);
   }
 
   .quality-info {
@@ -1017,8 +937,8 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.05);
     padding: 0.6rem 1rem;
     border-radius: 8px;
     width: fit-content;
@@ -1034,10 +954,10 @@
   }
 
   .plays-info {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255,255,255,0.05);
     border-radius: 10px;
     padding: 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255,255,255,0.08);
   }
 
   .plays-header {
@@ -1048,17 +968,17 @@
   }
 
   .plays-label {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255,255,255,0.5);
   }
 
   .plays-count {
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(255,255,255,0.8);
     font-weight: 600;
   }
 
   .plays-bar {
     height: 6px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255,255,255,0.1);
     border-radius: 3px;
     overflow: hidden;
   }
@@ -1099,7 +1019,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255,255,255,0.7);
     font-size: 0.9rem;
     margin-bottom: 1rem;
   }
@@ -1117,9 +1037,9 @@
   .input-group input {
     flex: 1;
     padding: 1rem 1.25rem;
-    border: 2px solid rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255,255,255,0.15);
     border-radius: 12px;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0,0,0,0.3);
     color: #fff;
     font-size: 1rem;
     transition: all 0.2s;
@@ -1128,7 +1048,7 @@
   .input-group input:focus {
     outline: none;
     border-color: rgba(0, 212, 255, 0.5);
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0,0,0,0.4);
   }
 
   .input-group input.error {
@@ -1136,7 +1056,7 @@
   }
 
   .input-group input::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255,255,255,0.3);
   }
 
   .unlock-btn {
@@ -1164,7 +1084,7 @@
   .btn-spinner {
     width: 20px;
     height: 20px;
-    border: 2px solid rgba(0, 0, 0, 0.2);
+    border: 2px solid rgba(0,0,0,0.2);
     border-top-color: #000;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -1199,7 +1119,7 @@
   .play-icon {
     width: 44px;
     height: 44px;
-    background: rgba(0, 0, 0, 0.15);
+    background: rgba(0,0,0,0.15);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1398,15 +1318,13 @@
   .footer {
     text-align: center;
     padding: 2rem;
-    color: rgba(255, 255, 255, 0.2);
+    color: rgba(255,255,255,0.2);
     font-size: 0.8rem;
     margin-top: auto;
   }
 
   @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
   }
 
   @media (max-width: 900px) {
@@ -1432,9 +1350,7 @@
       font-size: 2rem;
     }
 
-    .meta-badges,
-    .genres,
-    .ratings-row {
+    .meta-badges, .genres, .ratings-row {
       justify-content: center;
     }
 
