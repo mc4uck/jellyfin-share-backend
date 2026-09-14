@@ -156,12 +156,37 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	return c.httpClient.Do(req)
 }
 
-func (c *Client) GetItem(ctx context.Context, itemID string) (*ItemInfo, error) {
-	if c.userID == "" {
-		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+// func (c *Client) GetItem(ctx context.Context, itemID string) (*ItemInfo, error) {
+// 	if c.userID == "" {
+// 		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+// 	}
+
+// 	path := fmt.Sprintf("/Users/%s/Items/%s", c.userID, itemID)
+// 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer resp.Body.Close()
+
+// 	if resp.StatusCode != http.StatusOK {
+// 		body, _ := io.ReadAll(resp.Body)
+// 		return nil, fmt.Errorf("jellyfin API returned %d: %s", resp.StatusCode, string(body))
+// 	}
+
+// 	var item ItemInfo
+// 	if err := json.NewDecoder(resp.Body).Decode(&item); err != nil {
+// 		return nil, fmt.Errorf("failed to decode response: %w", err)
+// 	}
+
+// 	return &item, nil
+// }
+
+func (c *Client) GetItemForUser(ctx context.Context, userID, itemID string) (*ItemInfo, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("user ID is empty")
 	}
 
-	path := fmt.Sprintf("/Users/%s/Items/%s", c.userID, itemID)
+	path := fmt.Sprintf("/Users/%s/Items/%s", userID, itemID)
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -170,7 +195,13 @@ func (c *Client) GetItem(ctx context.Context, itemID string) (*ItemInfo, error) 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jellyfin API returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf(
+			"jellyfin API returned %d for user %s item %s: %s",
+			resp.StatusCode,
+			userID,
+			itemID,
+			string(body),
+		)
 	}
 
 	var item ItemInfo
@@ -179,6 +210,15 @@ func (c *Client) GetItem(ctx context.Context, itemID string) (*ItemInfo, error) 
 	}
 
 	return &item, nil
+}
+
+// GetItem keeps backwards compatibility for existing callers.
+func (c *Client) GetItem(ctx context.Context, itemID string) (*ItemInfo, error) {
+	if c.userID == "" {
+		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+	}
+
+	return c.GetItemForUser(ctx, c.userID, itemID)
 }
 
 func (c *Client) GetPlaybackInfo(ctx context.Context, itemID string) (*PlaybackInfo, error) {
@@ -285,13 +325,64 @@ type EpisodeInfo struct {
 }
 
 // GetSeasonEpisodes returns all episodes in a season
-func (c *Client) GetSeasonEpisodes(ctx context.Context, seasonID string) ([]EpisodeInfo, error) {
-	if c.userID == "" {
-		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+// func (c *Client) GetSeasonEpisodes(ctx context.Context, seasonID string) ([]EpisodeInfo, error) {
+// 	if c.userID == "" {
+// 		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+// 	}
+
+// 	// Use the Items endpoint with ParentId filter
+// 	path := fmt.Sprintf("/Users/%s/Items?ParentId=%s&SortBy=IndexNumber&SortOrder=Ascending", c.userID, seasonID)
+// 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer resp.Body.Close()
+
+// 	if resp.StatusCode != http.StatusOK {
+// 		body, _ := io.ReadAll(resp.Body)
+// 		return nil, fmt.Errorf("jellyfin API returned %d: %s", resp.StatusCode, string(body))
+// 	}
+
+// 	var result struct {
+// 		Items []ItemInfo `json:"Items"`
+// 	}
+// 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+// 		return nil, fmt.Errorf("failed to decode response: %w", err)
+// 	}
+
+// 	episodes := make([]EpisodeInfo, 0, len(result.Items))
+// 	for _, item := range result.Items {
+// 		if item.Type != "Episode" {
+// 			continue
+// 		}
+// 		ep := EpisodeInfo{
+// 			ID:           item.ID,
+// 			Name:         item.Name,
+// 			IndexNumber:  item.IndexNumber,
+// 			Overview:     item.Overview,
+// 			PremiereDate: item.PremiereDate,
+// 			HasPoster:    item.ImageTags.Primary != "",
+// 		}
+// 		if item.RunTimeTicks > 0 {
+// 			ep.RuntimeSeconds = TicksToSeconds(item.RunTimeTicks)
+// 		}
+// 		episodes = append(episodes, ep)
+// 	}
+
+// 	return episodes, nil
+// }
+
+func (c *Client) GetSeasonEpisodesForUser(ctx context.Context, userID, seasonID string) ([]EpisodeInfo, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("user ID is empty")
 	}
 
-	// Use the Items endpoint with ParentId filter
-	path := fmt.Sprintf("/Users/%s/Items?ParentId=%s&SortBy=IndexNumber&SortOrder=Ascending", c.userID, seasonID)
+	path := fmt.Sprintf(
+		"/Users/%s/Items?ParentId=%s&SortBy=IndexNumber&SortOrder=Ascending",
+		userID,
+		seasonID,
+	)
+
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -306,15 +397,18 @@ func (c *Client) GetSeasonEpisodes(ctx context.Context, seasonID string) ([]Epis
 	var result struct {
 		Items []ItemInfo `json:"Items"`
 	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	episodes := make([]EpisodeInfo, 0, len(result.Items))
+
 	for _, item := range result.Items {
 		if item.Type != "Episode" {
 			continue
 		}
+
 		ep := EpisodeInfo{
 			ID:           item.ID,
 			Name:         item.Name,
@@ -323,22 +417,78 @@ func (c *Client) GetSeasonEpisodes(ctx context.Context, seasonID string) ([]Epis
 			PremiereDate: item.PremiereDate,
 			HasPoster:    item.ImageTags.Primary != "",
 		}
+
 		if item.RunTimeTicks > 0 {
 			ep.RuntimeSeconds = TicksToSeconds(item.RunTimeTicks)
 		}
+
 		episodes = append(episodes, ep)
 	}
 
 	return episodes, nil
 }
 
-// GetSeriesSeasons returns all seasons in a series
-func (c *Client) GetSeriesSeasons(ctx context.Context, seriesID string) ([]EpisodeInfo, error) {
+func (c *Client) GetSeasonEpisodes(ctx context.Context, seasonID string) ([]EpisodeInfo, error) {
 	if c.userID == "" {
 		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
 	}
 
-	path := fmt.Sprintf("/Users/%s/Items?ParentId=%s&SortBy=IndexNumber&SortOrder=Ascending", c.userID, seriesID)
+	return c.GetSeasonEpisodesForUser(ctx, c.userID, seasonID)
+}
+
+// GetSeriesSeasons returns all seasons in a series
+// func (c *Client) GetSeriesSeasons(ctx context.Context, seriesID string) ([]EpisodeInfo, error) {
+// 	if c.userID == "" {
+// 		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+// 	}
+
+// 	path := fmt.Sprintf("/Users/%s/Items?ParentId=%s&SortBy=IndexNumber&SortOrder=Ascending", c.userID, seriesID)
+// 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer resp.Body.Close()
+
+// 	if resp.StatusCode != http.StatusOK {
+// 		body, _ := io.ReadAll(resp.Body)
+// 		return nil, fmt.Errorf("jellyfin API returned %d: %s", resp.StatusCode, string(body))
+// 	}
+
+// 	var result struct {
+// 		Items []ItemInfo `json:"Items"`
+// 	}
+// 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+// 		return nil, fmt.Errorf("failed to decode response: %w", err)
+// 	}
+
+// 	seasons := make([]EpisodeInfo, 0, len(result.Items))
+// 	for _, item := range result.Items {
+// 		if item.Type != "Season" {
+// 			continue
+// 		}
+// 		s := EpisodeInfo{
+// 			ID:          item.ID,
+// 			Name:        item.Name,
+// 			IndexNumber: item.IndexNumber,
+// 			Overview:    item.Overview,
+// 			HasPoster:   item.ImageTags.Primary != "",
+// 		}
+// 		seasons = append(seasons, s)
+// 	}
+
+// 	return seasons, nil
+// }
+func (c *Client) GetSeriesSeasonsForUser(ctx context.Context, userID, seriesID string) ([]EpisodeInfo, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("user ID is empty")
+	}
+
+	path := fmt.Sprintf(
+		"/Users/%s/Items?ParentId=%s&SortBy=IndexNumber&SortOrder=Ascending",
+		userID,
+		seriesID,
+	)
+
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -353,15 +503,18 @@ func (c *Client) GetSeriesSeasons(ctx context.Context, seriesID string) ([]Episo
 	var result struct {
 		Items []ItemInfo `json:"Items"`
 	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	seasons := make([]EpisodeInfo, 0, len(result.Items))
+
 	for _, item := range result.Items {
 		if item.Type != "Season" {
 			continue
 		}
+
 		s := EpisodeInfo{
 			ID:          item.ID,
 			Name:        item.Name,
@@ -369,8 +522,17 @@ func (c *Client) GetSeriesSeasons(ctx context.Context, seriesID string) ([]Episo
 			Overview:    item.Overview,
 			HasPoster:   item.ImageTags.Primary != "",
 		}
+
 		seasons = append(seasons, s)
 	}
 
 	return seasons, nil
+}
+
+func (c *Client) GetSeriesSeasons(ctx context.Context, seriesID string) ([]EpisodeInfo, error) {
+	if c.userID == "" {
+		return nil, fmt.Errorf("user ID not set - call FetchAndSetUserID first")
+	}
+
+	return c.GetSeriesSeasonsForUser(ctx, c.userID, seriesID)
 }

@@ -62,7 +62,12 @@ func (h *PublicHandler) GetShareInfo(w http.ResponseWriter, r *http.Request) {
 	info := share.ToPublicInfo(h.cfg.PublicBaseURL)
 
 	// Fetch extended metadata from Jellyfin
-	item, err := h.jf.GetItem(r.Context(), share.JellyfinItemID)
+	// item, err := h.jf.GetItem(r.Context(), share.JellyfinItemID)
+	item, err := h.jf.GetItemForUser(
+	r.Context(),
+	share.JellyfinUserID,
+	share.JellyfinItemID,
+	)
 	if err != nil {
 		log.Printf("Failed to fetch Jellyfin item %s: %v", share.JellyfinItemID, err)
 	} else if item != nil {
@@ -437,9 +442,19 @@ func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request)
 	var episodes []jellyfin.EpisodeInfo
 
 	if share.ItemType == "Season" {
-		episodes, err = h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+		// episodes, err = h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+		episodes, err = h.jf.GetSeasonEpisodesForUser(
+		r.Context(),
+		share.JellyfinUserID,
+		share.JellyfinItemID,
+		)
 	} else {
-		episodes, err = h.jf.GetSeriesSeasons(r.Context(), share.JellyfinItemID)
+		// episodes, err = h.jf.GetSeriesSeasons(r.Context(), share.JellyfinItemID)
+		episodes, err = h.jf.GetSeriesSeasonsForUser(
+		r.Context(),
+		share.JellyfinUserID,
+		share.JellyfinItemID,
+		)
 	}
 
 	if err != nil {
@@ -499,7 +514,12 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Verify the episode belongs to this season
-	episodes, err := h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+	// episodes, err := h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+	episodes, err := h.jf.GetSeasonEpisodesForUser(
+	r.Context(),
+	share.JellyfinUserID,
+	share.JellyfinItemID,
+	)
 	if err != nil {
 		log.Printf("Failed to get episodes: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to verify episode")

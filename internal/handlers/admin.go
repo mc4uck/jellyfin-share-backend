@@ -49,7 +49,13 @@ func (h *AdminHandler) CreateShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch item info from Jellyfin
-	item, err := h.jf.GetItem(r.Context(), req.JellyfinItemID)
+	// item, err := h.jf.GetItem(r.Context(), req.JellyfinItemID)
+	item, err := h.jf.GetItemForUser(
+	r.Context(),
+	req.JellyfinUserID,
+	req.JellyfinItemID,
+	)
+
 	if err != nil {
 		log.Printf("Failed to fetch Jellyfin item: %v", err)
 		writeError(w, http.StatusBadGateway, "failed to fetch item from Jellyfin")
