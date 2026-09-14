@@ -28,7 +28,14 @@
   let isPaused = true;
   let volume = 1;
 
-  $: progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  // A transcoded progressive MP3 response is not reliably byte-seekable in
+  // browsers. For audio seeking we restart the Jellyfin stream at the
+  // requested StartTimeTicks offset and keep the original track duration.
+  let audioOffset = 0;
+  let seekPreview = null;
+
+  $: displayedTime = seekPreview !== null ? seekPreview : currentTime;
+  $: progressPercent = duration > 0 ? Math.min(100, Math.max(0, (displayedTime / duration) * 100)) : 0;
   $: volumePercent = Math.round(volume * 100);
 
   onMount(() => {
@@ -53,14 +60,7 @@
 
     // Music uses a progressive MP3 stream from the backend proxy.
     if (isAudio) {
-      mediaElement.src = playbackData.playbackUrl;
-      mediaElement.addEventListener('loadedmetadata', () => {
-        duration = Number.isFinite(mediaElement.duration) ? mediaElement.duration : 0;
-        mediaElement.volume = volume;
-        mediaElement.play().catch(e => {
-          console.log('Autoplay prevented:', e);
-        });
-      }, { once: true });
+      loadAudioAt(0, true);
       return;
     }
 
@@ -111,6 +111,66 @@
     }
   }
 
+  function buildAudioUrlAt(seconds) {
+    const url = new URL(playbackData.playbackUrl, window.location.origin);
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+
+    if (safeSeconds > 0) {
+      // Jellyfin ticks are 10,000,000 per second.
+      url.searchParams.set('startTimeTicks', String(Math.round(safeSeconds * 10000000)));
+    } else {
+      url.searchParams.delete('startTimeTicks');
+    }
+
+    return url.toString();
+  }
+
+  function loadAudioAt(seconds, autoplay = true) {
+    if (!mediaElement || !playbackData?.playbackUrl) return;
+
+    let target = Math.max(0, Number(seconds) || 0);
+    if (duration > 0) {
+      // Avoid requesting a position beyond the end of the track.
+      target = Math.min(target, Math.max(0, duration - 0.05));
+    }
+
+    audioOffset = target;
+    currentTime = target;
+    seekPreview = null;
+    error = null;
+
+    mediaElement.pause();
+    mediaElement.src = buildAudioUrlAt(target);
+    mediaElement.load();
+    mediaElement.volume = volume;
+
+    if (autoplay) {
+      const playWhenReady = () => {
+        mediaElement.play().catch(e => {
+          console.log('Autoplay prevented:', e);
+        });
+      };
+      mediaElement.addEventListener('loadedmetadata', playWhenReady, { once: true });
+    }
+  }
+
+  function seekTo(seconds) {
+    if (!mediaElement) return;
+
+    let target = Number(seconds);
+    if (!Number.isFinite(target)) return;
+
+    target = Math.max(0, target);
+    if (duration > 0) target = Math.min(duration, target);
+
+    if (isAudio) {
+      loadAudioAt(target, true);
+    } else {
+      mediaElement.currentTime = target;
+      currentTime = target;
+    }
+  }
+
   function startHeartbeat() {
     heartbeatInterval = setInterval(async () => {
       if (!playbackData?.sessionId) return;
@@ -120,7 +180,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            positionSeconds: Math.floor(mediaElement?.currentTime || 0)
+            positionSeconds: Math.floor(isAudio ? currentTime : (mediaElement?.currentTime || 0))
           }),
           credentials: 'include'
         });
@@ -214,23 +274,41 @@
 
   function handleTimeUpdate() {
     if (!mediaElement) return;
-    currentTime = mediaElement.currentTime || 0;
+
+    const localTime = mediaElement.currentTime || 0;
+    currentTime = isAudio ? audioOffset + localTime : localTime;
+
+    if (duration > 0) {
+      currentTime = Math.min(currentTime, duration);
+    }
+
     if (!duration && Number.isFinite(mediaElement.duration)) {
-      duration = mediaElement.duration;
+      duration = isAudio ? audioOffset + mediaElement.duration : mediaElement.duration;
     }
   }
 
   function handleLoadedMetadata() {
-    if (!mediaElement) return;
-    duration = Number.isFinite(mediaElement.duration) ? mediaElement.duration : 0;
+    if (!mediaElement || !Number.isFinite(mediaElement.duration)) return;
+
+    // Preserve the original full duration after a seek. A stream requested
+    // with StartTimeTicks may report only the remaining duration.
+    if (!isAudio || audioOffset === 0 || duration <= 0) {
+      duration = isAudio ? audioOffset + mediaElement.duration : mediaElement.duration;
+    }
   }
 
-  function handleSeek(event) {
-    if (!mediaElement) return;
+  function handleSeekInput(event) {
     const newTime = Number(event.currentTarget.value);
     if (Number.isFinite(newTime)) {
-      mediaElement.currentTime = newTime;
-      currentTime = newTime;
+      seekPreview = newTime;
+    }
+  }
+
+  function handleSeekCommit(event) {
+    const newTime = Number(event.currentTarget.value);
+    seekPreview = null;
+    if (Number.isFinite(newTime)) {
+      seekTo(newTime);
     }
   }
 
@@ -266,10 +344,10 @@
         toggleFullscreen();
         break;
       case 'ArrowLeft':
-        if (mediaElement) mediaElement.currentTime = Math.max(0, mediaElement.currentTime - 10);
+        seekTo((isAudio ? currentTime : (mediaElement?.currentTime || 0)) - 10);
         break;
       case 'ArrowRight':
-        if (mediaElement) mediaElement.currentTime = Math.min(mediaElement.duration || Infinity, mediaElement.currentTime + 10);
+        seekTo((isAudio ? currentTime : (mediaElement?.currentTime || 0)) + 10);
         break;
     }
   }
@@ -355,13 +433,14 @@
                   min="0"
                   max={duration || 0}
                   step="0.1"
-                  value={currentTime}
-                  on:input={handleSeek}
+                  value={displayedTime}
+                  on:input={handleSeekInput}
+                  on:change={handleSeekCommit}
                   aria-label="Seek"
                 />
               </div>
               <div class="time-row">
-                <span>{formatClock(currentTime)}</span>
+                <span>{formatClock(displayedTime)}</span>
                 <span>{formatClock(duration)}</span>
               </div>
             </div>
@@ -710,10 +789,13 @@
   .seek-input {
     position: absolute;
     inset: 0;
+    z-index: 2;
     width: 100%;
+    height: 22px;
     margin: 0;
     opacity: 0;
     cursor: pointer;
+    touch-action: none;
   }
 
   .time-row {
