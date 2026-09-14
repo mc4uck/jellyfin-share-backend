@@ -83,6 +83,8 @@ type ItemInfo struct {
 	MediaSources      []MediaSource `json:"MediaSources,omitempty"`
 	Width             int           `json:"Width,omitempty"`
 	Height            int           `json:"Height,omitempty"`
+	Artists           []string      `json:"Artists,omitempty"`
+	AlbumArtist       string        `json:"AlbumArtist,omitempty"`
 }
 
 type ImageTags struct {
@@ -290,6 +292,7 @@ type EpisodeInfo struct {
 	RuntimeSeconds int64  `json:"runtimeSeconds,omitempty"`
 	HasPoster      bool   `json:"hasPoster"`
 	PremiereDate   string `json:"premiereDate,omitempty"`
+	Artist         string `json:"artist,omitempty"`
 }
 
 // GetSeasonEpisodesForUser returns all episodes in a season for a specific Jellyfin user.
@@ -448,12 +451,18 @@ func (c *Client) GetAlbumTracksForUser(ctx context.Context, userID, albumID stri
 			continue
 		}
 
+		artist := strings.Join(item.Artists, ", ")
+		if artist == "" {
+			artist = item.AlbumArtist
+		}
+
 		track := EpisodeInfo{
 			ID:          item.ID,
 			Name:        item.Name,
 			IndexNumber: item.IndexNumber,
 			Overview:    item.Overview,
 			HasPoster:   item.ImageTags.Primary != "",
+			Artist:      artist,
 		}
 		if item.RunTimeTicks > 0 {
 			track.RuntimeSeconds = TicksToSeconds(item.RunTimeTicks)

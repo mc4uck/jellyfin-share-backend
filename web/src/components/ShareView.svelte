@@ -23,6 +23,7 @@
   let imageLoaded = !shareInfo.posterUrl;
   let showFullCast = false;
   let currentPlayingTitle = '';
+  let currentPlayingArtist = '';
 
   // Episode/season list for Season/Series
   let episodes = [];
@@ -203,8 +204,10 @@
       if (isMusicAlbum) {
         currentTrackIndex = trackIndex;
         currentPlayingTitle = `${episode.indexNumber ? `${episode.indexNumber}. ` : ''}${episode.name}`;
+        currentPlayingArtist = episode.artist || '';
       } else {
         currentTrackIndex = -1;
+        currentPlayingArtist = '';
         currentPlayingTitle = selectedSeason
           ? `${selectedSeason.name} - E${episode.indexNumber}: ${episode.name}`
           : `E${episode.indexNumber}: ${episode.name}`;
@@ -265,6 +268,7 @@
     isPlaying = false;
     playbackData = null;
     currentPlayingTitle = '';
+    currentPlayingArtist = '';
     currentTrackIndex = -1;
   }
 
@@ -285,6 +289,7 @@
         title={currentPlayingTitle || shareInfo.title}
         isAudio={isMusicAlbum || shareInfo.itemType === 'Audio'}
         coverUrl={shareInfo.posterUrl ? `${shareInfo.posterUrl}?maxWidth=700` : ''}
+        artist={isMusicAlbum ? currentPlayingArtist : ''}
         subtitle={isMusicAlbum ? shareInfo.title : ''}
         currentIndex={isMusicAlbum ? currentTrackIndex : -1}
         totalItems={isMusicAlbum ? episodes.length : 0}
@@ -575,6 +580,9 @@
                         </div>
                         <div class="episode-info">
                           <div class="episode-title">{episode.name}</div>
+                          {#if isMusicAlbum && episode.artist}
+                            <div class="episode-artist">{episode.artist}</div>
+                          {/if}
                           {#if episode.runtimeSeconds}
                             <div class="episode-meta">{formatDuration(episode.runtimeSeconds)}</div>
                           {/if}
@@ -1283,6 +1291,13 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .episode-artist {
+    margin-top: 0.18rem;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 0.88rem;
+    line-height: 1.25;
   }
 
   .episode-meta {

@@ -8,6 +8,7 @@
   export let hasPrevious = false;
   export let hasNext = false;
   export let coverUrl = '';
+  export let artist = '';
   export let subtitle = '';
   export let currentIndex = -1;
   export let totalItems = 0;
@@ -326,6 +327,9 @@
           <div class="audio-panel">
             <div class="now-playing-label">NOW PLAYING</div>
             <h1>{title}</h1>
+            {#if artist}
+              <div class="track-artist">{artist}</div>
+            {/if}
             {#if subtitle}
               <div class="album-title">{subtitle}</div>
             {/if}
@@ -652,6 +656,16 @@
     line-height: 1.12;
     letter-spacing: -0.02em;
     overflow-wrap: anywhere;
+  }
+
+  .track-artist {
+    margin-top: 0.4rem;
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.82);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .album-title {
