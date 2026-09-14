@@ -62,7 +62,12 @@ func (h *PublicHandler) GetShareInfo(w http.ResponseWriter, r *http.Request) {
 	info := share.ToPublicInfo(h.cfg.PublicBaseURL)
 
 	// Fetch extended metadata from Jellyfin
-	item, err := h.jf.GetItemForUser(r.Context(), share.JellyfinUserID, share.JellyfinItemID)
+	// item, err := h.jf.GetItem(r.Context(), share.JellyfinItemID)
+	item, err := h.jf.GetItemForUser(
+	r.Context(),
+	share.JellyfinUserID,
+	share.JellyfinItemID,
+	)
 	if err != nil {
 		log.Printf("Failed to fetch Jellyfin item %s: %v", share.JellyfinItemID, err)
 	} else if item != nil {
@@ -253,11 +258,11 @@ func (h *PublicHandler) StartPlayback(w http.ResponseWriter, r *http.Request) {
 	if !share.CanStartNewPlay() {
 		ipHash := middleware.GetIPHash(r.Context())
 		h.db.LogAuditEvent(r.Context(), database.AuditEventPlaybackDenied, &share.ID, nil, nil, &ipHash, map[string]interface{}{
-			"reason":            "limit_reached",
-			"totalPlays":        share.TotalPlays,
-			"maxTotalPlays":     share.MaxTotalPlays,
+			"reason":           "limit_reached",
+			"totalPlays":       share.TotalPlays,
+			"maxTotalPlays":    share.MaxTotalPlays,
 			"concurrentViewers": share.CurrentConcurrentViewers,
-			"maxConcurrent":     share.MaxConcurrentViewers,
+			"maxConcurrent":    share.MaxConcurrentViewers,
 		})
 
 		if share.MaxTotalPlays.Valid && int64(share.TotalPlays) >= share.MaxTotalPlays.Int64 {
@@ -407,7 +412,7 @@ func (h *PublicHandler) FinishPlayback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "finished"})
 }
 
-// GetShareEpisodes returns seasons for a Series share, or episodes for a Season/selected Series season.
+// GetShareEpisodes returns episodes for a Season share
 func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
@@ -422,84 +427,53 @@ func (h *PublicHandler) GetShareEpisodes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Check password if required
 	if share.RequiresPassword() && !h.sessions.GetSessionFromCookie(r, token) {
 		writeError(w, http.StatusUnauthorized, "password required")
 		return
 	}
 
+	// Only Season and Series types have episodes/children
 	if share.ItemType != "Season" && share.ItemType != "Series" {
 		writeError(w, http.StatusBadRequest, "this share does not contain episodes")
 		return
 	}
 
-	var items []jellyfin.EpisodeInfo
+	var episodes []jellyfin.EpisodeInfo
 
 	if share.ItemType == "Season" {
-		items, err = h.jf.GetSeasonEpisodesForUser(
-			r.Context(),
-			share.JellyfinUserID,
-			share.JellyfinItemID,
+		// episodes, err = h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
+		episodes, err = h.jf.GetSeasonEpisodesForUser(
+		r.Context(),
+		share.JellyfinUserID,
+		share.JellyfinItemID,
 		)
 	} else {
-		seasonID := r.URL.Query().Get("seasonId")
-
-		if seasonID == "" {
-			// First level of a Series share: return seasons.
-			items, err = h.jf.GetSeriesSeasonsForUser(
-				r.Context(),
-				share.JellyfinUserID,
-				share.JellyfinItemID,
-			)
-		} else {
-			// Verify that the requested season belongs to the shared series.
-			seasons, seasonsErr := h.jf.GetSeriesSeasonsForUser(
-				r.Context(),
-				share.JellyfinUserID,
-				share.JellyfinItemID,
-			)
-			if seasonsErr != nil {
-				log.Printf("Failed to get series seasons: %v", seasonsErr)
-				writeError(w, http.StatusInternalServerError, "failed to get seasons")
-				return
-			}
-
-			seasonValid := false
-			for _, season := range seasons {
-				if season.ID == seasonID {
-					seasonValid = true
-					break
-				}
-			}
-
-			if !seasonValid {
-				writeError(w, http.StatusForbidden, "season not part of this series")
-				return
-			}
-
-			items, err = h.jf.GetSeasonEpisodesForUser(
-				r.Context(),
-				share.JellyfinUserID,
-				seasonID,
-			)
-		}
+		// episodes, err = h.jf.GetSeriesSeasons(r.Context(), share.JellyfinItemID)
+		episodes, err = h.jf.GetSeriesSeasonsForUser(
+		r.Context(),
+		share.JellyfinUserID,
+		share.JellyfinItemID,
+		)
 	}
 
 	if err != nil {
-		log.Printf("Failed to get episodes/seasons: %v", err)
+		log.Printf("Failed to get episodes: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to get episodes")
 		return
 	}
 
+	// Add poster URLs
 	type EpisodeWithPoster struct {
 		jellyfin.EpisodeInfo
 		PosterURL string `json:"posterUrl,omitempty"`
 	}
 
-	result := make([]EpisodeWithPoster, 0, len(items))
-	for _, item := range items {
-		ewp := EpisodeWithPoster{EpisodeInfo: item}
-		if item.HasPoster {
-			ewp.PosterURL = h.cfg.PublicBaseURL + "/api/public/images/" + token + "/episode/" + item.ID
+	result := make([]EpisodeWithPoster, 0, len(episodes))
+	for _, ep := range episodes {
+		ewp := EpisodeWithPoster{EpisodeInfo: ep}
+		if ep.HasPoster {
+			ewp.PosterURL = h.cfg.PublicBaseURL + "/api/public/images/" + token + "/episode/" + ep.ID
 		}
 		result = append(result, ewp)
 	}
@@ -533,52 +507,18 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Episode playback is valid for a Season share or for a selected season inside a Series share.
-	if share.ItemType != "Season" && share.ItemType != "Series" {
-		writeError(w, http.StatusBadRequest, "episode playback only available for season or series shares")
+	// Verify this is a Season share
+	if share.ItemType != "Season" {
+		writeError(w, http.StatusBadRequest, "episode playback only available for season shares")
 		return
 	}
 
-	seasonID := share.JellyfinItemID
-
-	if share.ItemType == "Series" {
-		seasonID = r.URL.Query().Get("seasonId")
-		if seasonID == "" {
-			writeError(w, http.StatusBadRequest, "seasonId is required for series playback")
-			return
-		}
-
-		// Verify the season belongs to the shared series.
-		seasons, err := h.jf.GetSeriesSeasonsForUser(
-			r.Context(),
-			share.JellyfinUserID,
-			share.JellyfinItemID,
-		)
-		if err != nil {
-			log.Printf("Failed to get series seasons: %v", err)
-			writeError(w, http.StatusInternalServerError, "failed to verify season")
-			return
-		}
-
-		seasonValid := false
-		for _, season := range seasons {
-			if season.ID == seasonID {
-				seasonValid = true
-				break
-			}
-		}
-
-		if !seasonValid {
-			writeError(w, http.StatusForbidden, "season not part of this series")
-			return
-		}
-	}
-
-	// Verify the episode belongs to the selected season.
+	// Verify the episode belongs to this season
+	// episodes, err := h.jf.GetSeasonEpisodes(r.Context(), share.JellyfinItemID)
 	episodes, err := h.jf.GetSeasonEpisodesForUser(
-		r.Context(),
-		share.JellyfinUserID,
-		seasonID,
+	r.Context(),
+	share.JellyfinUserID,
+	share.JellyfinItemID,
 	)
 	if err != nil {
 		log.Printf("Failed to get episodes: %v", err)

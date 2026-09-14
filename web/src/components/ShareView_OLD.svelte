@@ -23,79 +23,54 @@
   let showFullCast = false;
   let currentPlayingTitle = "";
 
-  // Episode/season list for Season/Series
+  // Episode list for Season/Series
   let episodes = [];
   let episodesLoading = false;
   let episodesError = "";
-  let episodesLoaded = false;
-  let selectedSeason = null;
 
   onMount(async () => {
     const timeout = setTimeout(() => {
       imageLoaded = true;
     }, 500);
 
+    // Load episodes for Season/Series
+    if (isSeasonOrSeries && !needsPassword) {
+      await loadEpisodes();
+    }
+
     return () => clearTimeout(timeout);
   });
 
-  // Load seasons/episodes initially and after password validation.
+  // Load episodes when password is validated
   $: if (
     isSeasonOrSeries &&
     !needsPassword &&
-    !episodesLoaded &&
+    episodes.length === 0 &&
     !episodesLoading
   ) {
-    loadEpisodes(selectedSeason?.id || null);
+    loadEpisodes();
   }
 
-  async function loadEpisodes(seasonId = null) {
-    if (!isSeasonOrSeries || episodesLoading) return;
-
+  async function loadEpisodes() {
+    if (!isSeasonOrSeries) return;
     episodesLoading = true;
-    episodesLoaded = false;
     episodesError = "";
-
     try {
-      const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : "";
-      const response = await fetch(
-        `/api/public/shares/${token}/episodes${query}`,
-        {
-          credentials: "include",
-        },
-      );
-
+      const response = await fetch(`/api/public/shares/${token}/episodes`, {
+        credentials: "include",
+      });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         episodesError = data.error || "Failed to load episodes";
-        episodes = [];
         return;
       }
-
       const data = await response.json();
       episodes = data.episodes || [];
     } catch (e) {
       episodesError = "Failed to load episodes";
-      episodes = [];
     } finally {
       episodesLoading = false;
-      episodesLoaded = true;
     }
-  }
-
-  async function openSeason(season) {
-    selectedSeason = season;
-    episodes = [];
-    episodesLoaded = false;
-    playError = "";
-    await loadEpisodes(season.id);
-  }
-
-  async function backToSeasons() {
-    selectedSeason = null;
-    episodes = [];
-    episodesLoaded = false;
-    playError = "";
-    await loadEpisodes();
   }
 
   function formatDuration(seconds) {
@@ -187,32 +162,22 @@
 
   async function startEpisodePlayback(episode) {
     playError = "";
-
     try {
-      const query =
-        shareInfo.itemType === "Series" && selectedSeason
-          ? `?seasonId=${encodeURIComponent(selectedSeason.id)}`
-          : "";
-
       const response = await fetch(
-        `/api/public/shares/${token}/episodes/${episode.id}/play${query}`,
+        `/api/public/shares/${token}/episodes/${episode.id}/play`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
         },
       );
-
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         playError = data.error || "Failed to start playback";
         return;
       }
-
       playbackData = await response.json();
-      currentPlayingTitle = selectedSeason
-        ? `${selectedSeason.name} - E${episode.indexNumber}: ${episode.name}`
-        : `E${episode.indexNumber}: ${episode.name}`;
+      currentPlayingTitle = `E${episode.indexNumber}: ${episode.name}`;
       isPlaying = true;
     } catch (e) {
       playError = "Failed to connect to server";
@@ -493,62 +458,39 @@
               </form>
             </div>
           {:else if isSeasonOrSeries}
-            <!-- Season -> Episode navigation for Series, episode list for Season -->
+            <!-- Episode List for Season/Series -->
             <div class="episodes-section">
               <h3 class="episodes-header">
-                {#if shareInfo.itemType === "Series" && selectedSeason}
-                  Episodes — {selectedSeason.name}
-                {:else}
-                  {shareInfo.itemType === "Season" ? "Episodes" : "Seasons"}
-                {/if}
+                {shareInfo.itemType === "Season" ? "Episodes" : "Seasons"}
                 {#if episodes.length > 0}
                   <span class="episodes-count">({episodes.length})</span>
                 {/if}
               </h3>
 
-              {#if shareInfo.itemType === "Series" && selectedSeason}
-                <button
-                  type="button"
-                  class="season-back"
-                  on:click={backToSeasons}
-                >
-                  ← Back to seasons
-                </button>
-              {/if}
-
               {#if episodesLoading}
                 <div class="episodes-loading">
                   <div class="loading-spinner"></div>
                   <span
-                    >Loading {shareInfo.itemType === "Series" && !selectedSeason
-                      ? "seasons"
-                      : "episodes"}...</span
+                    >Loading {shareInfo.itemType === "Season"
+                      ? "episodes"
+                      : "seasons"}...</span
                   >
                 </div>
               {:else if episodesError}
                 <p class="error-msg">{episodesError}</p>
               {:else if episodes.length === 0}
                 <p class="episodes-empty">
-                  No {shareInfo.itemType === "Series" && !selectedSeason
-                    ? "seasons"
-                    : "episodes"} found
+                  No {shareInfo.itemType === "Season" ? "episodes" : "seasons"} found
                 </p>
               {:else}
                 <div class="episodes-list">
                   {#each episodes as episode}
                     <button
                       class="episode-card"
-                      on:click={() =>
-                        shareInfo.itemType === "Series" && !selectedSeason
-                          ? openSeason(episode)
-                          : startEpisodePlayback(episode)}
+                      on:click={() => startEpisodePlayback(episode)}
                     >
                       <div class="episode-number">
-                        {#if shareInfo.itemType === "Series" && !selectedSeason}
-                          S{episode.indexNumber || "?"}
-                        {:else}
-                          {episode.indexNumber || "?"}
-                        {/if}
+                        {episode.indexNumber || "?"}
                       </div>
                       <div class="episode-info">
                         <div class="episode-title">{episode.name}</div>
@@ -559,15 +501,9 @@
                         {/if}
                       </div>
                       <div class="episode-play">
-                        {#if shareInfo.itemType === "Series" && !selectedSeason}
-                          <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M9 18l6-6-6-6" />
-                          </svg>
-                        {:else}
-                          <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        {/if}
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
                       </div>
                     </button>
                   {/each}
@@ -1133,22 +1069,6 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-
-  .season-back {
-    margin: -0.35rem 0 0.85rem 0;
-    padding: 0.45rem 0.7rem;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 7px;
-    color: rgba(255, 255, 255, 0.8);
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-
-  .season-back:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
   }
 
   .episodes-count {
