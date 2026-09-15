@@ -700,10 +700,10 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 
 	var playbackURL string
 	if share.ItemType == "MusicAlbum" {
-		// Use a browser-native progressive MP3 stream for album tracks.
-		// This avoids HLS.js audio-only media errors while preserving
-		// the album queue/next-track logic in the frontend.
-		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/stream.mp3?itemId=" + childID
+		// Audio is served through Jellyfin's /Audio/{id}/universal HLS endpoint.
+		// The proxy translates this public master.m3u8 URL to the same request
+		// shape used by Jellyfin Web, while keeping the API key server-side.
+		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
 	} else {
 		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
 	}

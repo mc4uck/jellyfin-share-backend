@@ -93,13 +93,20 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 	isAudio := share.ItemType == "MusicAlbum" || share.ItemType == "Audio"
 
 	// Build Jellyfin URL
-	jellyfinURL := p.buildJellyfinStreamURL(itemID, path, r.URL.RawQuery, isAudio)
+	jellyfinURL := p.buildJellyfinStreamURL(
+		itemID,
+		share.JellyfinUserID,
+		sessionID.String(),
+		path,
+		r.URL.RawQuery,
+		isAudio,
+	)
 
 	// Proxy the request
 	p.proxyRequest(w, r, jellyfinURL)
 }
 
-func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string, isAudio bool) string {
+func (p *StreamProxy) buildJellyfinStreamURL(itemID, userID, sessionID, path, query string, isAudio bool) string {
 	baseURL := p.jf.BaseURL()
 
 	// Parse existing query and ensure api_key is set (don't duplicate).
@@ -115,56 +122,43 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string, isAudio
 		params.Del("itemId")
 		params.Del("seasonId")
 		params.Del("continue")
+		params.Del("mediaType")
 
-		// Album tracks use Jellyfin's universal audio endpoint.
-		// Unlike the progressive /stream.mp3 endpoint, /universal is built
-		// for server-side StartTimeTicks seeking. We keep stream.mp3 only as
-		// our public proxy URL; upstream it is translated to /Audio/{id}/universal.
-		if path == "stream.mp3" {
-			// Let Jellyfin resolve the real media source itself. A Jellyfin item ID
-			// is not guaranteed to be the MediaSourceId for every audio item.
-			params.Del("mediaSourceId")
-			params.Del("MediaSourceId")
+		// Jellyfin Web itself plays audio through /Audio/{id}/universal
+		// using HLS + AAC. Mirror that working request here instead of
+		// the progressive /stream.mp3 endpoint.
+		if path == "master.m3u8" {
+			// Avoid duplicate spellings of the token in the upstream URL.
+			params.Del("api_key")
+			params.Del("ApiKey")
+			params.Set("ApiKey", key)
 
-			params.Set("Container", "mp3")
-			params.Set("TranscodingContainer", "mp3")
-			params.Set("AudioCodec", "mp3")
-			params.Set("AudioBitRate", "192000")
-			params.Set("MaxStreamingBitrate", "192000")
-			params.Set("MaxAudioChannels", "2")
+			if userID != "" {
+				params.Set("UserId", userID)
+			}
 			params.Set("DeviceId", "jfshare-backend")
-			params.Set("EnableRedirection", "false")
+			params.Set("MaxStreamingBitrate", "140000000")
+			params.Set("Container", "opus,webm|opus,ts|mp3,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg")
+			params.Set("TranscodingContainer", "mp4")
+			params.Set("TranscodingProtocol", "hls")
+			params.Set("AudioCodec", "aac")
+			params.Set("PlaySessionId", "jfshare-"+sessionID)
+			if params.Get("StartTimeTicks") == "" {
+				params.Set("StartTimeTicks", "0")
+			}
+			params.Set("EnableRedirection", "true")
+			params.Set("EnableRemoteMedia", "false")
+			params.Set("EnableAudioVbrEncoding", "true")
 
 			return baseURL + "/Audio/" + itemID + "/universal?" + params.Encode()
 		}
 
-		// Keep audio HLS as a fallback for any older/direct Audio URLs.
-		if strings.HasSuffix(path, ".m3u8") {
-			params.Set("AudioCodec", "aac")
-			params.Set("AudioBitrate", "192000")
-			params.Set("TranscodingMaxAudioChannels", "2")
-			params.Set("AllowAudioStreamCopy", "false")
-			params.Set("BreakOnNonKeyFrames", "True")
-			params.Set("SegmentContainer", "ts")
-
-			if path == "master.m3u8" {
-				params.Set("MediaSourceId", itemID)
-				params.Set("DeviceId", "jfshare-backend")
-				params.Set("PlaySessionId", "jfshare-"+itemID)
-				return baseURL + "/Audio/" + itemID + "/master.m3u8?" + params.Encode()
-			}
-
-			return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
-		}
-
-		if path != "" && path != "stream" {
-			params.Del("AudioCodec")
-			return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
-		}
-
-		params.Set("Static", "true")
-		params.Set("mediaSourceId", itemID)
-		return baseURL + "/Audio/" + itemID + "/stream?" + params.Encode()
+		// The universal HLS manifest points at Jellyfin audio sub-playlists
+		// and segments. Keep those requests behind this proxy as well.
+		params.Del("api_key")
+		params.Del("ApiKey")
+		params.Set("ApiKey", key)
+		return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
 	}
 
 	// Video HLS: preserve the existing forced-transcoding behaviour.

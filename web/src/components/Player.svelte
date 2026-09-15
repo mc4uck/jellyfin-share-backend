@@ -28,14 +28,7 @@
   let isPaused = true;
   let volume = 1;
 
-  // A transcoded progressive MP3 response is not reliably byte-seekable in
-  // browsers. For audio seeking we restart the Jellyfin stream at the
-  // requested StartTimeTicks offset and keep the original track duration.
-  let audioOffset = 0;
-  let seekPreview = null;
-
-  $: displayedTime = seekPreview !== null ? seekPreview : currentTime;
-  $: progressPercent = duration > 0 ? Math.min(100, Math.max(0, (displayedTime / duration) * 100)) : 0;
+  $: progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   $: volumePercent = Math.round(volume * 100);
 
   onMount(() => {
@@ -58,12 +51,9 @@
       return;
     }
 
-    // Music uses a progressive MP3 stream from the backend proxy.
-    if (isAudio) {
-      loadAudioAt(0, true);
-      return;
-    }
-
+    // Audio and video both use HLS. For MusicAlbum the backend maps
+    // playbackUrl to Jellyfin's /Audio/{id}/universal HLS endpoint.
+    // Hls.js can attach an audio-only HLS stream directly to <audio>.
     if (Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
@@ -75,6 +65,10 @@
       hls.attachMedia(mediaElement);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        mediaElement.volume = volume;
+        if (Number.isFinite(mediaElement.duration)) {
+          duration = mediaElement.duration;
+        }
         mediaElement.play().catch(e => {
           console.log('Autoplay prevented:', e);
         });
@@ -102,73 +96,14 @@
       // Safari native HLS support
       mediaElement.src = playbackData.playbackUrl;
       mediaElement.addEventListener('loadedmetadata', () => {
+        mediaElement.volume = volume;
+        duration = Number.isFinite(mediaElement.duration) ? mediaElement.duration : 0;
         mediaElement.play().catch(e => {
           console.log('Autoplay prevented:', e);
         });
       });
     } else {
       error = 'HLS playback is not supported in this browser';
-    }
-  }
-
-  function buildAudioUrlAt(seconds) {
-    const url = new URL(playbackData.playbackUrl, window.location.origin);
-    const safeSeconds = Math.max(0, Number(seconds) || 0);
-
-    if (safeSeconds > 0) {
-      // Jellyfin ticks are 10,000,000 per second.
-      url.searchParams.set('StartTimeTicks', String(Math.round(safeSeconds * 10000000)));
-    } else {
-      url.searchParams.delete('StartTimeTicks');
-      url.searchParams.delete('startTimeTicks');
-    }
-
-    return url.toString();
-  }
-
-  function loadAudioAt(seconds, autoplay = true) {
-    if (!mediaElement || !playbackData?.playbackUrl) return;
-
-    let target = Math.max(0, Number(seconds) || 0);
-    if (duration > 0) {
-      // Avoid requesting a position beyond the end of the track.
-      target = Math.min(target, Math.max(0, duration - 0.05));
-    }
-
-    audioOffset = target;
-    currentTime = target;
-    seekPreview = null;
-    error = null;
-
-    mediaElement.pause();
-    mediaElement.src = buildAudioUrlAt(target);
-    mediaElement.load();
-    mediaElement.volume = volume;
-
-    if (autoplay) {
-      const playWhenReady = () => {
-        mediaElement.play().catch(e => {
-          console.log('Autoplay prevented:', e);
-        });
-      };
-      mediaElement.addEventListener('loadedmetadata', playWhenReady, { once: true });
-    }
-  }
-
-  function seekTo(seconds) {
-    if (!mediaElement) return;
-
-    let target = Number(seconds);
-    if (!Number.isFinite(target)) return;
-
-    target = Math.max(0, target);
-    if (duration > 0) target = Math.min(duration, target);
-
-    if (isAudio) {
-      loadAudioAt(target, true);
-    } else {
-      mediaElement.currentTime = target;
-      currentTime = target;
     }
   }
 
@@ -181,7 +116,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            positionSeconds: Math.floor(isAudio ? currentTime : (mediaElement?.currentTime || 0))
+            positionSeconds: Math.floor(mediaElement?.currentTime || 0)
           }),
           credentials: 'include'
         });
@@ -275,41 +210,23 @@
 
   function handleTimeUpdate() {
     if (!mediaElement) return;
-
-    const localTime = mediaElement.currentTime || 0;
-    currentTime = isAudio ? audioOffset + localTime : localTime;
-
-    if (duration > 0) {
-      currentTime = Math.min(currentTime, duration);
-    }
-
+    currentTime = mediaElement.currentTime || 0;
     if (!duration && Number.isFinite(mediaElement.duration)) {
-      duration = isAudio ? audioOffset + mediaElement.duration : mediaElement.duration;
+      duration = mediaElement.duration;
     }
   }
 
   function handleLoadedMetadata() {
-    if (!mediaElement || !Number.isFinite(mediaElement.duration)) return;
-
-    // Preserve the original full duration after a seek. A stream requested
-    // with StartTimeTicks may report only the remaining duration.
-    if (!isAudio || audioOffset === 0 || duration <= 0) {
-      duration = isAudio ? audioOffset + mediaElement.duration : mediaElement.duration;
-    }
+    if (!mediaElement) return;
+    duration = Number.isFinite(mediaElement.duration) ? mediaElement.duration : 0;
   }
 
-  function handleSeekInput(event) {
+  function handleSeek(event) {
+    if (!mediaElement) return;
     const newTime = Number(event.currentTarget.value);
     if (Number.isFinite(newTime)) {
-      seekPreview = newTime;
-    }
-  }
-
-  function handleSeekCommit(event) {
-    const newTime = Number(event.currentTarget.value);
-    seekPreview = null;
-    if (Number.isFinite(newTime)) {
-      seekTo(newTime);
+      mediaElement.currentTime = newTime;
+      currentTime = newTime;
     }
   }
 
@@ -345,10 +262,10 @@
         toggleFullscreen();
         break;
       case 'ArrowLeft':
-        seekTo((isAudio ? currentTime : (mediaElement?.currentTime || 0)) - 10);
+        if (mediaElement) mediaElement.currentTime = Math.max(0, mediaElement.currentTime - 10);
         break;
       case 'ArrowRight':
-        seekTo((isAudio ? currentTime : (mediaElement?.currentTime || 0)) + 10);
+        if (mediaElement) mediaElement.currentTime = Math.min(mediaElement.duration || Infinity, mediaElement.currentTime + 10);
         break;
     }
   }
@@ -434,14 +351,13 @@
                   min="0"
                   max={duration || 0}
                   step="0.1"
-                  value={displayedTime}
-                  on:input={handleSeekInput}
-                  on:change={handleSeekCommit}
+                  value={currentTime}
+                  on:input={handleSeek}
                   aria-label="Seek"
                 />
               </div>
               <div class="time-row">
-                <span>{formatClock(displayedTime)}</span>
+                <span>{formatClock(currentTime)}</span>
                 <span>{formatClock(duration)}</span>
               </div>
             </div>
@@ -790,13 +706,10 @@
   .seek-input {
     position: absolute;
     inset: 0;
-    z-index: 2;
     width: 100%;
-    height: 22px;
     margin: 0;
     opacity: 0;
     cursor: pointer;
-    touch-action: none;
   }
 
   .time-row {
