@@ -700,10 +700,10 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 
 	var playbackURL string
 	if share.ItemType == "MusicAlbum" {
-		// Audio is served through Jellyfin's /Audio/{id}/universal HLS endpoint.
-		// The proxy translates this public master.m3u8 URL to the same request
-		// shape used by Jellyfin Web, while keeping the API key server-side.
-		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
+		// Audio is returned as a normal media response from Jellyfin's
+		// /Audio/{id}/universal endpoint. The browser plays it directly
+		// through <audio>; it is NOT an HLS manifest for hls.js.
+		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/audio?itemId=" + childID
 	} else {
 		playbackURL = h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + childID
 	}

@@ -124,41 +124,32 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, userID, sessionID, path, qu
 		params.Del("continue")
 		params.Del("mediaType")
 
-		// Jellyfin Web itself plays audio through /Audio/{id}/universal
-		// using HLS + AAC. Mirror that working request here instead of
-		// the progressive /stream.mp3 endpoint.
-		if path == "master.m3u8" {
-			// Avoid duplicate spellings of the token in the upstream URL.
-			params.Del("api_key")
-			params.Del("ApiKey")
-			params.Set("ApiKey", key)
-
-			if userID != "" {
-				params.Set("UserId", userID)
-			}
-			params.Set("DeviceId", "jfshare-backend")
-			params.Set("MaxStreamingBitrate", "140000000")
-			params.Set("Container", "opus,webm|opus,ts|mp3,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg")
-			params.Set("TranscodingContainer", "mp4")
-			params.Set("TranscodingProtocol", "hls")
-			params.Set("AudioCodec", "aac")
-			params.Set("PlaySessionId", "jfshare-"+sessionID)
-			if params.Get("StartTimeTicks") == "" {
-				params.Set("StartTimeTicks", "0")
-			}
-			params.Set("EnableRedirection", "true")
-			params.Set("EnableRemoteMedia", "false")
-			params.Set("EnableAudioVbrEncoding", "true")
-
-			return baseURL + "/Audio/" + itemID + "/universal?" + params.Encode()
-		}
-
-		// The universal HLS manifest points at Jellyfin audio sub-playlists
-		// and segments. Keep those requests behind this proxy as well.
+		// Jellyfin Web uses /Audio/{id}/universal for music playback. Despite
+		// TranscodingProtocol=hls, this endpoint can return the actual playable
+		// media response (or redirect to it), not an m3u8 manifest. Keep it as a
+		// direct media response and let the browser's <audio> element consume it.
 		params.Del("api_key")
 		params.Del("ApiKey")
 		params.Set("ApiKey", key)
-		return baseURL + "/Audio/" + itemID + "/" + path + "?" + params.Encode()
+
+		if userID != "" {
+			params.Set("UserId", userID)
+		}
+		params.Set("DeviceId", "jfshare-backend")
+		params.Set("MaxStreamingBitrate", "140000000")
+		params.Set("Container", "opus,webm|opus,ts|mp3,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg")
+		params.Set("TranscodingContainer", "mp4")
+		params.Set("TranscodingProtocol", "hls")
+		params.Set("AudioCodec", "aac")
+		params.Set("PlaySessionId", "jfshare-"+sessionID)
+		if params.Get("StartTimeTicks") == "" {
+			params.Set("StartTimeTicks", "0")
+		}
+		params.Set("EnableRedirection", "true")
+		params.Set("EnableRemoteMedia", "false")
+		params.Set("EnableAudioVbrEncoding", "true")
+
+		return baseURL + "/Audio/" + itemID + "/universal?" + params.Encode()
 	}
 
 	// Video HLS: preserve the existing forced-transcoding behaviour.

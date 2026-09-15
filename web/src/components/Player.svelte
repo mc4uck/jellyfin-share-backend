@@ -51,9 +51,33 @@
       return;
     }
 
-    // Audio and video both use HLS. For MusicAlbum the backend maps
-    // playbackUrl to Jellyfin's /Audio/{id}/universal HLS endpoint.
-    // Hls.js can attach an audio-only HLS stream directly to <audio>.
+    // Jellyfin's /Audio/{id}/universal endpoint returns the playable media
+    // response itself (or a redirect to it), not an m3u8 manifest. Feed audio
+    // directly to the native <audio> element. This also lets the browser use
+    // byte-range seeking when the upstream response advertises Accept-Ranges.
+    if (isAudio) {
+      mediaElement.src = playbackData.playbackUrl;
+      mediaElement.volume = volume;
+
+      mediaElement.addEventListener('loadedmetadata', () => {
+        duration = Number.isFinite(mediaElement.duration) ? mediaElement.duration : 0;
+        mediaElement.play().catch(e => {
+          console.log('Autoplay prevented:', e);
+        });
+      }, { once: true });
+
+      mediaElement.addEventListener('error', () => {
+        const code = mediaElement?.error?.code;
+        error = code ? `Audio playback error (${code})` : 'Audio playback error';
+      }, { once: true });
+
+      // load() makes the browser fetch metadata immediately instead of waiting
+      // for another state transition after Svelte mounted the element.
+      mediaElement.load();
+      return;
+    }
+
+    // Video continues to use the existing HLS path.
     if (Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
@@ -93,7 +117,7 @@
         }
       });
     } else if (mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS support
+      // Safari native HLS support for video.
       mediaElement.src = playbackData.playbackUrl;
       mediaElement.addEventListener('loadedmetadata', () => {
         mediaElement.volume = volume;
