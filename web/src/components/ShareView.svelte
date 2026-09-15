@@ -33,6 +33,19 @@
   let selectedSeason = null;
   let currentTrackIndex = -1;
 
+  // Music album playback modes. These are frontend-only and do not change
+  // the working v9 audio proxy.
+  let shuffleEnabled = false;
+  let repeatMode = 'off'; // off -> all -> one
+  let playOrder = [];
+  let playOrderPosition = -1;
+
+  $: albumHasPrevious = isMusicAlbum && currentTrackIndex >= 0 &&
+    (playOrderPosition > 0 || (repeatMode === 'all' && episodes.length > 1));
+  $: albumHasNext = isMusicAlbum && currentTrackIndex >= 0 &&
+    (playOrderPosition >= 0 && playOrderPosition < playOrder.length - 1 ||
+      (repeatMode === 'all' && episodes.length > 1));
+
   onMount(async () => {
     const timeout = setTimeout(() => {
       imageLoaded = true;
@@ -219,8 +232,44 @@
     }
   }
 
-  async function startAlbumTrack(index, continuation = false) {
+  function shuffled(values) {
+    const result = [...values];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  function rebuildPlayOrder(startIndex) {
+    if (!isMusicAlbum || episodes.length === 0) {
+      playOrder = [];
+      playOrderPosition = -1;
+      return;
+    }
+
+    const indices = episodes.map((_, index) => index);
+
+    if (shuffleEnabled) {
+      const rest = shuffled(indices.filter(index => index !== startIndex));
+      playOrder = [startIndex, ...rest];
+      playOrderPosition = 0;
+    } else {
+      playOrder = indices;
+      playOrderPosition = Math.max(0, playOrder.indexOf(startIndex));
+    }
+  }
+
+  async function startAlbumTrack(index, continuation = false, rebuildOrder = true) {
     if (!isMusicAlbum || index < 0 || index >= episodes.length) return;
+
+    if (rebuildOrder || playOrder.length !== episodes.length) {
+      rebuildPlayOrder(index);
+    } else {
+      const position = playOrder.indexOf(index);
+      if (position >= 0) playOrderPosition = position;
+    }
+
     await startEpisodePlayback(episodes[index], index, continuation);
   }
 
@@ -236,32 +285,92 @@
       return;
     }
 
-    await startAlbumTrack(0);
+    const firstIndex = shuffleEnabled && episodes.length > 1
+      ? Math.floor(Math.random() * episodes.length)
+      : 0;
+
+    await startAlbumTrack(firstIndex);
+  }
+
+  async function advanceTrack(fromEnded = false) {
+    if (!isMusicAlbum || currentTrackIndex < 0) return;
+
+    if (fromEnded && repeatMode === 'one') {
+      await startAlbumTrack(currentTrackIndex, true, false);
+      return;
+    }
+
+    if (playOrder.length !== episodes.length || playOrderPosition < 0) {
+      rebuildPlayOrder(currentTrackIndex);
+    }
+
+    if (playOrderPosition < playOrder.length - 1) {
+      const nextIndex = playOrder[playOrderPosition + 1];
+      await startAlbumTrack(nextIndex, true, false);
+      return;
+    }
+
+    if (repeatMode === 'all' && episodes.length > 0) {
+      if (shuffleEnabled && episodes.length > 1) {
+        const candidates = episodes
+          .map((_, index) => index)
+          .filter(index => index !== currentTrackIndex);
+        const nextIndex = candidates[Math.floor(Math.random() * candidates.length)];
+        rebuildPlayOrder(nextIndex);
+        await startAlbumTrack(nextIndex, true, false);
+      } else {
+        rebuildPlayOrder(0);
+        await startAlbumTrack(0, true, false);
+      }
+      return;
+    }
+
+    handlePlayerClose();
   }
 
   async function playNextTrack() {
-    if (!isMusicAlbum) return;
-    const nextIndex = currentTrackIndex + 1;
-    if (nextIndex >= episodes.length) {
-      handlePlayerClose();
-      return;
-    }
-    await startAlbumTrack(nextIndex, true);
+    await advanceTrack(false);
   }
 
   async function playPreviousTrack() {
-    if (!isMusicAlbum) return;
-    const previousIndex = currentTrackIndex - 1;
-    if (previousIndex < 0) return;
-    await startAlbumTrack(previousIndex, true);
+    if (!isMusicAlbum || currentTrackIndex < 0) return;
+
+    if (playOrder.length !== episodes.length || playOrderPosition < 0) {
+      rebuildPlayOrder(currentTrackIndex);
+    }
+
+    if (playOrderPosition > 0) {
+      const previousIndex = playOrder[playOrderPosition - 1];
+      await startAlbumTrack(previousIndex, true, false);
+      return;
+    }
+
+    if (repeatMode === 'all' && playOrder.length > 1) {
+      const previousIndex = playOrder[playOrder.length - 1];
+      await startAlbumTrack(previousIndex, true, false);
+    }
   }
 
   async function handlePlayerEnded() {
     if (isMusicAlbum) {
-      await playNextTrack();
+      await advanceTrack(true);
     } else {
       handlePlayerClose();
     }
+  }
+
+  function toggleShuffle() {
+    shuffleEnabled = !shuffleEnabled;
+    if (isMusicAlbum && currentTrackIndex >= 0 && episodes.length > 0) {
+      rebuildPlayOrder(currentTrackIndex);
+    } else {
+      playOrder = [];
+      playOrderPosition = -1;
+    }
+  }
+
+  function toggleRepeat() {
+    repeatMode = repeatMode === 'off' ? 'all' : (repeatMode === 'all' ? 'one' : 'off');
   }
 
   function handlePlayerClose() {
@@ -269,7 +378,13 @@
     playbackData = null;
     currentPlayingTitle = '';
     currentPlayingArtist = '';
-    currentTrackIndex = -1;
+
+    // Keep the selected track highlighted after closing the album player.
+    if (!isMusicAlbum) {
+      currentTrackIndex = -1;
+      playOrder = [];
+      playOrderPosition = -1;
+    }
   }
 
   function handleImageLoad() {
@@ -293,12 +408,16 @@
         subtitle={isMusicAlbum ? shareInfo.title : ''}
         currentIndex={isMusicAlbum ? currentTrackIndex : -1}
         totalItems={isMusicAlbum ? episodes.length : 0}
-        hasPrevious={isMusicAlbum && currentTrackIndex > 0}
-        hasNext={isMusicAlbum && currentTrackIndex >= 0 && currentTrackIndex < episodes.length - 1}
+        hasPrevious={albumHasPrevious}
+        hasNext={albumHasNext}
+        {shuffleEnabled}
+        {repeatMode}
         on:close={handlePlayerClose}
         on:ended={handlePlayerEnded}
         on:previous={playPreviousTrack}
         on:next={playNextTrack}
+        on:toggleshuffle={toggleShuffle}
+        on:togglerepeat={toggleRepeat}
       />
     {/key}
   {:else}
@@ -563,6 +682,7 @@
                     {#each episodes as episode, index}
                       <button
                         class="episode-card"
+                        class:current-track={isMusicAlbum && index === currentTrackIndex}
                         on:click={() => isMusicAlbum
                           ? startAlbumTrack(index)
                           : (shareInfo.itemType === 'Series' && !selectedSeason
@@ -588,7 +708,11 @@
                           {/if}
                         </div>
                         <div class="episode-play">
-                          {#if shareInfo.itemType === 'Series' && !selectedSeason && !isMusicAlbum}
+                          {#if isMusicAlbum && index === currentTrackIndex}
+                            <span class="now-playing-bars" aria-label="Current track">
+                              <i></i><i></i><i></i>
+                            </span>
+                          {:else if shareInfo.itemType === 'Series' && !selectedSeason && !isMusicAlbum}
                             <svg viewBox="0 0 24 24" fill="currentColor">
                               <path d="M9 18l6-6-6-6"/>
                             </svg>
@@ -1264,6 +1388,18 @@
     transform: translateX(2px);
   }
 
+  .episode-card.current-track {
+    background: linear-gradient(90deg, rgba(0, 164, 220, 0.18), rgba(255, 255, 255, 0.06));
+    border-color: rgba(99, 191, 255, 0.52);
+    box-shadow: 0 0 0 1px rgba(0, 164, 220, 0.08) inset;
+  }
+
+  .episode-card.current-track .episode-number {
+    background: rgba(0, 164, 220, 0.28);
+    border-color: rgba(99, 191, 255, 0.62);
+    color: #8ed3ff;
+  }
+
   .episode-number {
     width: 36px;
     height: 36px;
@@ -1328,6 +1464,33 @@
   .episode-card:hover .episode-play {
     background: rgba(0, 212, 255, 0.4);
     transform: scale(1.1);
+  }
+
+  .now-playing-bars {
+    width: 17px;
+    height: 16px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .now-playing-bars i {
+    display: block;
+    width: 3px;
+    min-height: 4px;
+    border-radius: 2px;
+    background: #73c8ff;
+    animation: nowPlayingBar 0.8s ease-in-out infinite alternate;
+  }
+
+  .now-playing-bars i:nth-child(1) { height: 8px; animation-delay: -0.25s; }
+  .now-playing-bars i:nth-child(2) { height: 15px; animation-delay: -0.5s; }
+  .now-playing-bars i:nth-child(3) { height: 11px; animation-delay: -0.1s; }
+
+  @keyframes nowPlayingBar {
+    from { transform: scaleY(0.45); opacity: 0.7; }
+    to { transform: scaleY(1); opacity: 1; }
   }
 
   .footer {

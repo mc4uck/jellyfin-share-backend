@@ -12,6 +12,8 @@
   export let subtitle = '';
   export let currentIndex = -1;
   export let totalItems = 0;
+  export let shuffleEnabled = false;
+  export let repeatMode = 'off';
 
   const dispatch = createEventDispatcher();
 
@@ -210,6 +212,16 @@
     dispatch('next');
   }
 
+  function toggleShuffle() {
+    if (!isAudio) return;
+    dispatch('toggleshuffle');
+  }
+
+  function toggleRepeat() {
+    if (!isAudio) return;
+    dispatch('togglerepeat');
+  }
+
   function toggleFullscreen() {
     if (isAudio) return;
     if (!document.fullscreenElement) {
@@ -388,6 +400,18 @@
 
             <div class="transport-controls">
               <button
+                class="mode-button"
+                class:active={shuffleEnabled}
+                on:click={toggleShuffle}
+                title={shuffleEnabled ? 'Shuffle on' : 'Shuffle off'}
+                aria-label={shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'}
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M16 3h5v5h-2V6.41l-4.29 4.3-1.42-1.42L17.59 5H16V3zM4 7h3.17l9.41 9.41L19 14v-1h2v5h-5v-2h1.59L6.34 8.83A1 1 0 0 0 5.63 8H4V7zm0 9h1.63a1 1 0 0 0 .71-.29l3.17-3.17 1.42 1.42-3.17 3.17A3 3 0 0 1 5.63 18H4v-2z"/>
+                </svg>
+              </button>
+
+              <button
                 class="transport-button secondary"
                 on:click={handlePrevious}
                 title="Previous track"
@@ -419,6 +443,21 @@
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/>
                 </svg>
+              </button>
+
+              <button
+                class="mode-button repeat-button"
+                class:active={repeatMode !== 'off'}
+                on:click={toggleRepeat}
+                title={repeatMode === 'one' ? 'Repeat one' : (repeatMode === 'all' ? 'Repeat all' : 'Repeat off')}
+                aria-label="Change repeat mode"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M7 7h10V4l4 4-4 4V9H7a3 3 0 0 0-3 3v1H2v-1a5 5 0 0 1 5-5zm10 10H7v3l-4-4 4-4v3h10a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5z"/>
+                </svg>
+                {#if repeatMode === 'one'}
+                  <span class="repeat-one-badge">1</span>
+                {/if}
               </button>
             </div>
 
@@ -749,7 +788,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 22px;
+    gap: 16px;
     margin-top: 26px;
   }
 
@@ -783,6 +822,46 @@
 
   .transport-button.secondary:hover:not(:disabled) {
     background: rgba(255,255,255,0.16);
+  }
+
+  .mode-button {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: transparent;
+    color: rgba(255,255,255,0.48) !important;
+  }
+
+  .mode-button:hover {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.84) !important;
+  }
+
+  .mode-button.active {
+    color: #63bfff !important;
+    background: rgba(0,164,220,0.12);
+  }
+
+  .mode-button svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .repeat-one-badge {
+    position: absolute;
+    right: 5px;
+    bottom: 4px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 2px;
+    border-radius: 7px;
+    background: #63bfff;
+    color: #061018;
+    font-size: 9px;
+    line-height: 13px;
+    font-weight: 800;
+    text-align: center;
   }
 
   .transport-controls button:disabled {
@@ -928,6 +1007,25 @@
       max-width: 300px;
       margin-left: auto;
       margin-right: auto;
+    }
+
+    .transport-controls {
+      gap: 10px;
+    }
+
+    .mode-button {
+      width: 36px;
+      height: 36px;
+    }
+
+    .transport-button {
+      width: 44px;
+      height: 44px;
+    }
+
+    .play-pause-button {
+      width: 64px;
+      height: 64px;
     }
   }
 
