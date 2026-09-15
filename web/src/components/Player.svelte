@@ -34,6 +34,20 @@
   $: volumePercent = Math.round(volume * 100);
 
   onMount(() => {
+    // Keep audio volume between tracks. Player is recreated for every track
+    // because ShareView keys it by playbackData.sessionId, so component-local
+    // state would otherwise reset to 100% on each transition.
+    if (isAudio) {
+      try {
+        const savedVolume = Number(localStorage.getItem('jfshare-audio-volume'));
+        if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) {
+          volume = savedVolume;
+        }
+      } catch (e) {
+        console.warn('Failed to restore audio volume:', e);
+      }
+    }
+
     initPlayer();
     startHeartbeat();
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -267,9 +281,19 @@
   }
 
   function handleVolume(event) {
-    if (!mediaElement) return;
     volume = Number(event.currentTarget.value);
-    mediaElement.volume = volume;
+
+    if (mediaElement) {
+      mediaElement.volume = volume;
+    }
+
+    if (isAudio) {
+      try {
+        localStorage.setItem('jfshare-audio-volume', String(volume));
+      } catch (e) {
+        console.warn('Failed to save audio volume:', e);
+      }
+    }
   }
 
   function formatClock(seconds) {
