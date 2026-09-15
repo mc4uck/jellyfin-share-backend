@@ -117,8 +117,9 @@
 
     if (safeSeconds > 0) {
       // Jellyfin ticks are 10,000,000 per second.
-      url.searchParams.set('startTimeTicks', String(Math.round(safeSeconds * 10000000)));
+      url.searchParams.set('StartTimeTicks', String(Math.round(safeSeconds * 10000000)));
     } else {
+      url.searchParams.delete('StartTimeTicks');
       url.searchParams.delete('startTimeTicks');
     }
 

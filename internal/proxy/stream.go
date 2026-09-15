@@ -16,7 +16,6 @@ import (
 	"github.com/jellyfin-share/jellyfin-share-backend/internal/models"
 )
 
-
 type StreamProxy struct {
 	db         *database.DB
 	jf         *jellyfin.Client
@@ -117,18 +116,26 @@ func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string, isAudio
 		params.Del("seasonId")
 		params.Del("continue")
 
-		// Album tracks use a browser-native progressive MP3 stream.
-		// Jellyfin's /Audio/{itemId}/stream.{container} endpoint chooses
-		// the requested output codec/container from the URL and parameters.
+		// Album tracks use Jellyfin's universal audio endpoint.
+		// Unlike the progressive /stream.mp3 endpoint, /universal is built
+		// for server-side StartTimeTicks seeking. We keep stream.mp3 only as
+		// our public proxy URL; upstream it is translated to /Audio/{id}/universal.
 		if path == "stream.mp3" {
-			params.Set("Static", "false")
-			params.Set("mediaSourceId", itemID)
-			params.Set("DeviceId", "jfshare-backend")
-			params.Set("PlaySessionId", "jfshare-"+itemID)
+			// Let Jellyfin resolve the real media source itself. A Jellyfin item ID
+			// is not guaranteed to be the MediaSourceId for every audio item.
+			params.Del("mediaSourceId")
+			params.Del("MediaSourceId")
+
+			params.Set("Container", "mp3")
+			params.Set("TranscodingContainer", "mp3")
 			params.Set("AudioCodec", "mp3")
-			params.Set("AudioBitrate", "192000")
+			params.Set("AudioBitRate", "192000")
+			params.Set("MaxStreamingBitrate", "192000")
 			params.Set("MaxAudioChannels", "2")
-			return baseURL + "/Audio/" + itemID + "/stream.mp3?" + params.Encode()
+			params.Set("DeviceId", "jfshare-backend")
+			params.Set("EnableRedirection", "false")
+
+			return baseURL + "/Audio/" + itemID + "/universal?" + params.Encode()
 		}
 
 		// Keep audio HLS as a fallback for any older/direct Audio URLs.
@@ -317,7 +324,6 @@ func (p *StreamProxy) ServeImage(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(key, value)
 		}
 	}
-
 
 	// Enable caching for images
 	w.Header().Set("Cache-Control", "public, max-age=86400")
